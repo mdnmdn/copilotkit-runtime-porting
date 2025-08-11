@@ -637,3 +637,700 @@ class GenerateCopilotResponseInput(BaseModel):
 4. Performance optimization and scaling
 
 This specification provides the foundation for creating a comprehensive Python port of CopilotRuntime that maintains compatibility with the existing TypeScript ecosystem while leveraging Python's strengths for agentic AI workflows.
+
+## Deep Dive Analysis
+
+Based on comprehensive analysis of the TypeScript implementation, here are the critical architectural patterns and implementation details:
+
+### Service Adapter Architecture (Deep Dive)
+
+#### OpenAI Adapter Implementation Pattern
+The OpenAI adapter demonstrates sophisticated streaming patterns:
+
+```typescript
+// Key patterns observed:
+1. **Streaming State Machine**: Tracks "message" vs "function" modes
+2. **Token Counting**: Smart message truncation based on model limits
+3. **Tool Call Allowlisting**: Filters out orphaned tool results
+4. **Parallel Tool Control**: Option to disable parallel tool calls
+
+// Critical streaming logic:
+async for (const chunk of stream) {
+  const toolCall = chunk.choices[0].delta.tool_calls?.[0];
+  const content = chunk.choices[0].delta.content;
+  
+  // Mode transitions emit appropriate start/end events
+  if (mode === "message" && toolCall?.id) {
+    eventStream$.sendTextMessageEnd({ messageId: currentMessageId });
+    mode = "function";
+    eventStream$.sendActionExecutionStart({...});
+  }
+  
+  // Content streaming
+  if (mode === "message" && content) {
+    eventStream$.sendTextMessageContent({ messageId, content });
+  }
+}
+```
+
+**Python Implementation Strategy:**
+```python
+class OpenAIAdapter(CopilotServiceAdapter):
+    async def process(self, request: CopilotRuntimeRequest):
+        # Use async generators for streaming
+        async def stream_handler():
+            mode = None
+            current_message_id = None
+            
+            async for chunk in self.openai.chat.completions.stream(...):
+                # Implement state machine logic
+                tool_call = chunk.choices[0].delta.tool_calls
+                content = chunk.choices[0].delta.content
+                
+                # Emit appropriate events based on mode transitions
+                yield RuntimeEvent(...)
+                
+        return StreamingResponse(stream_handler())
+```
+
+#### Message Conversion Patterns
+
+**Critical Conversion Logic:**
+```typescript
+// GraphQL Input → Internal Message Format
+convertGqlInputToMessages(inputMessages: MessageInput[]): Message[]
+
+// Internal → OpenAI Format  
+convertMessageToOpenAIMessage(message: Message): ChatCompletionMessageParam
+
+// Key patterns:
+1. **Union Type Handling**: MessageInput has optional fields for each type
+2. **JSON Parsing**: Arguments and state are JSON strings that need parsing
+3. **Role Mapping**: System → Developer role conversion for OpenAI
+4. **Tool Call Structure**: Complex tool_calls array construction
+```
+
+**Python Implementation:**
+```python
+from typing import Union, Optional
+from pydantic import BaseModel, Field
+
+class MessageInput(BaseModel):
+    id: str
+    created_at: datetime
+    text_message: Optional[TextMessageInput] = None
+    action_execution_message: Optional[ActionExecutionMessageInput] = None
+    result_message: Optional[ResultMessageInput] = None
+    agent_state_message: Optional[AgentStateMessageInput] = None
+    image_message: Optional[ImageMessageInput] = None
+    
+def convert_gql_input_to_messages(input_messages: List[MessageInput]) -> List[Message]:
+    messages = []
+    for msg in input_messages:
+        if msg.text_message:
+            messages.append(TextMessage(
+                id=msg.id,
+                created_at=msg.created_at,
+                role=msg.text_message.role,
+                content=msg.text_message.content
+            ))
+        elif msg.action_execution_message:
+            messages.append(ActionExecutionMessage(
+                id=msg.id,
+                created_at=msg.created_at,
+                name=msg.action_execution_message.name,
+                arguments=json.loads(msg.action_execution_message.arguments)
+            ))
+    return messages
+```
+
+### Remote Agent Integration (Deep Dive)
+
+#### Agent Discovery and Execution Patterns
+
+**Multi-Endpoint Agent Discovery:**
+```typescript
+// Three types of agent endpoints:
+1. **CopilotKit Endpoints**: Self-hosted with /info discovery
+2. **LangGraph Platform**: Managed service with assistant discovery
+3. **AGUI Agents**: In-process Python agent objects
+
+// Discovery flow:
+async setupRemoteActions({
+  remoteEndpointDefinitions,
+  graphqlContext,
+  messages,
+  agentStates
+}): Promise<Action[]>
+
+// Each endpoint type has different discovery and execution patterns
+```
+
+**Agent Execution Patterns:**
+```typescript
+// Remote agent execution involves:
+1. **State Management**: Thread state serialization/deserialization
+2. **Action Filtering**: Available actions vs agent-specific actions  
+3. **Message Threading**: Parent-child relationships
+4. **Event Streaming**: JSON-line streaming for real-time updates
+
+// LangGraph Platform integration:
+const response = await execute({
+  deploymentUrl: endpoint.deploymentUrl,
+  langsmithApiKey: endpoint.langsmithApiKey,
+  threadId,
+  messages: [...messages, ...additionalMessages],
+  state: parseJson(jsonState.state, {}),
+  actions: actionInputsWithoutAgents.map(convertToLangGraphFormat)
+});
+```
+
+**Python Implementation Strategy:**
+```python
+from abc import ABC, abstractmethod
+from typing import Dict, List, AsyncGenerator
+
+class AgentEndpoint(ABC):
+    @abstractmethod
+    async def discover_agents(self, context: GraphQLContext) -> List[Agent]:
+        pass
+    
+    @abstractmethod  
+    async def execute_agent(self, request: AgentExecutionRequest) -> AsyncGenerator[RuntimeEvent, None]:
+        pass
+
+class LangGraphPlatformEndpoint(AgentEndpoint):
+    def __init__(self, deployment_url: str, langsmith_api_key: str):
+        self.deployment_url = deployment_url
+        self.langsmith_api_key = langsmith_api_key
+        self.client = LangGraphClient(api_url=deployment_url, api_key=langsmith_api_key)
+    
+    async def execute_agent(self, request: AgentExecutionRequest):
+        async for event in self.client.runs.stream(
+            thread_id=request.thread_id,
+            assistant_id=request.agent_name,
+            input={"messages": request.messages},
+            stream_mode="events"
+        ):
+            yield convert_langgraph_event_to_runtime_event(event)
+
+class CopilotKitEndpoint(AgentEndpoint):
+    async def execute_agent(self, request: AgentExecutionRequest):
+        async with httpx.AsyncClient() as client:
+            async with client.stream("POST", f"{self.url}/agents/execute",
+                json=request.dict()) as response:
+                async for line in response.aiter_lines():
+                    if line:
+                        event_data = json.loads(line)
+                        yield RuntimeEvent(**event_data)
+```
+
+### Event Streaming Architecture (Deep Dive)
+
+#### RxJS to AsyncIO Pattern Translation
+
+**TypeScript RxJS Pattern:**
+```typescript
+// Complex reactive stream composition
+const eventStream = eventSource
+  .processRuntimeEvents({...})
+  .pipe(
+    shareReplay(),  // Replay events for late subscribers
+    scan((acc, event) => {...}, initialState), // State accumulation
+    concatMap((eventWithState) => {
+      // Conditional stream branching for action execution
+      if (eventWithState.event.type === ActionExecutionEnd) {
+        const toolCallEventStream$ = new RuntimeEventSubject();
+        executeAction(...).catch(error => {});
+        return concat(of(event), toolCallEventStream$);
+      }
+      return of(event);
+    }),
+    catchError(error => {...}) // Error handling
+  );
+```
+
+**Python AsyncIO Translation:**
+```python
+import asyncio
+from typing import AsyncGenerator, Dict, Any
+
+class RuntimeEventSource:
+    def __init__(self):
+        self.event_queue = asyncio.Queue()
+        self.subscribers: List[asyncio.Queue] = []
+        self.state: Dict[str, Any] = {}
+    
+    async def process_runtime_events(self, 
+                                   server_side_actions: List[Action],
+                                   action_inputs_without_agents: List[ActionInput],
+                                   thread_id: str) -> AsyncGenerator[RuntimeEvent, None]:
+        
+        try:
+            async for event in self._event_stream():
+                # State management (scan equivalent)
+                self._update_state(event)
+                
+                # Conditional processing (concatMap equivalent)  
+                if event.type == RuntimeEventTypes.ACTION_EXECUTION_END:
+                    if self._should_execute_action(event):
+                        # Spawn action execution as background task
+                        asyncio.create_task(
+                            self._execute_action(event, server_side_actions)
+                        )
+                
+                # Emit to subscribers (shareReplay equivalent)
+                for subscriber in self.subscribers:
+                    await subscriber.put(event)
+                
+                yield event
+                
+        except Exception as error:
+            structured_error = self._convert_to_structured_error(error)
+            error_event = RuntimeEvent(
+                type=RuntimeEventTypes.ERROR,
+                error=structured_error
+            )
+            yield error_event
+
+    async def _execute_action(self, event: RuntimeEvent, actions: List[Action]):
+        # Background action execution
+        action = next(a for a in actions if a.name == event.action_name)
+        try:
+            result = await action.handler(json.loads(event.args))
+            result_event = RuntimeEvent(
+                type=RuntimeEventTypes.ACTION_EXECUTION_RESULT,
+                action_execution_id=event.action_execution_id,
+                result=json.dumps(result)
+            )
+            await self.event_queue.put(result_event)
+        except Exception as e:
+            error_event = RuntimeEvent(
+                type=RuntimeEventTypes.ACTION_EXECUTION_RESULT,
+                action_execution_id=event.action_execution_id,
+                result=json.dumps({"error": {"code": "HANDLER_ERROR", "message": str(e)}})
+            )
+            await self.event_queue.put(error_event)
+```
+
+#### JSON-Line Streaming Pattern
+
+**Critical Streaming Implementation:**
+```typescript
+// Handles partial JSON chunks across network boundaries
+async function writeJsonLineResponseToEventStream<T>(
+  response: ReadableStream<Uint8Array>,
+  eventStream$: ReplaySubject<T>,
+) {
+  const decoder = new TextDecoder();
+  let buffer = [];
+  
+  function flushBuffer() {
+    const currentBuffer = buffer.join("");
+    const parts = currentBuffer.split("\n");
+    const lastPartIsComplete = currentBuffer.endsWith("\n");
+    
+    buffer = [];
+    if (!lastPartIsComplete) {
+      buffer.push(parts.pop()); // Keep incomplete part
+    }
+    
+    parts
+      .map((part) => part.trim())
+      .filter((part) => part != "")
+      .forEach((part) => {
+        eventStream$.next(JSON.parse(part));
+      });
+  }
+}
+```
+
+**Python Implementation:**
+```python
+import asyncio
+import json
+from typing import AsyncGenerator
+
+async def process_jsonl_stream(response_stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[Dict, None]:
+    """Process JSON-line streaming with proper boundary handling"""
+    buffer = []
+    
+    async for chunk in response_stream:
+        buffer.append(chunk.decode('utf-8'))
+        
+        # Process complete lines
+        current_buffer = ''.join(buffer)
+        if '\n' not in current_buffer:
+            continue
+            
+        parts = current_buffer.split('\n')
+        last_part_complete = current_buffer.endswith('\n')
+        
+        # Reset buffer
+        buffer = []
+        if not last_part_complete:
+            buffer.append(parts.pop())  # Keep incomplete part
+        
+        # Yield complete JSON objects
+        for part in parts:
+            part = part.strip()
+            if part:
+                try:
+                    yield json.loads(part)
+                except json.JSONDecodeError as e:
+                    print(f"Failed to parse JSON: {part}, error: {e}")
+                    continue
+```
+
+### Error Handling System (Deep Dive)
+
+#### Structured Error Classification
+
+**TypeScript Error Hierarchy:**
+```typescript
+// Comprehensive error classification system
+class CopilotKitError extends Error {
+  code: CopilotKitErrorCode;
+  severity: Severity;
+  visibility: Visibility;
+}
+
+class CopilotKitLowLevelError extends CopilotKitError {
+  url?: string;          // Where the error occurred
+  statusCode?: number;   // HTTP status if applicable  
+  originalError: Error;  // Preserve original error
+}
+
+// Error classification by HTTP status:
+401 → AUTHENTICATION_ERROR
+4xx → CONFIGURATION_ERROR  
+5xx → NETWORK_ERROR
+```
+
+**Python Error System:**
+```python
+from enum import Enum
+from typing import Optional, Dict, Any
+
+class CopilotKitErrorCode(Enum):
+    AUTHENTICATION_ERROR = "AUTHENTICATION_ERROR"
+    CONFIGURATION_ERROR = "CONFIGURATION_ERROR" 
+    NETWORK_ERROR = "NETWORK_ERROR"
+    AGENT_NOT_FOUND = "AGENT_NOT_FOUND"
+    API_NOT_FOUND = "API_NOT_FOUND"
+    UNKNOWN = "UNKNOWN"
+
+class Severity(Enum):
+    CRITICAL = "CRITICAL"
+    ERROR = "ERROR"
+    WARNING = "WARNING"
+    INFO = "INFO"
+
+class Visibility(Enum):
+    USER = "USER"      # Show to end users
+    DEVELOPER = "DEVELOPER"  # Show to developers only
+    INTERNAL = "INTERNAL"    # Internal errors
+
+class CopilotKitError(Exception):
+    def __init__(self, 
+                 message: str,
+                 code: CopilotKitErrorCode = CopilotKitErrorCode.UNKNOWN,
+                 severity: Severity = Severity.ERROR,
+                 visibility: Visibility = Visibility.DEVELOPER,
+                 context: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.code = code
+        self.severity = severity
+        self.visibility = visibility
+        self.context = context or {}
+
+class CopilotKitLowLevelError(CopilotKitError):
+    def __init__(self,
+                 error: Exception,
+                 url: Optional[str] = None,
+                 message: Optional[str] = None,
+                 status_code: Optional[int] = None):
+        self.original_error = error
+        self.url = url
+        self.status_code = status_code
+        
+        # Classify error based on HTTP status
+        if status_code == 401:
+            code = CopilotKitErrorCode.AUTHENTICATION_ERROR
+        elif status_code and 400 <= status_code < 500:
+            code = CopilotKitErrorCode.CONFIGURATION_ERROR
+        elif status_code and status_code >= 500:
+            code = CopilotKitErrorCode.NETWORK_ERROR
+        else:
+            code = CopilotKitErrorCode.NETWORK_ERROR
+            
+        super().__init__(
+            message or f"Low-level error: {str(error)}", 
+            code=code
+        )
+
+def convert_service_adapter_error(error: Exception, adapter_name: str) -> CopilotKitLowLevelError:
+    """Convert service adapter errors to structured format"""
+    status_code = getattr(error, 'status_code', None) or getattr(error, 'status', None)
+    
+    return CopilotKitLowLevelError(
+        error=error,
+        url=f"{adapter_name} service adapter",
+        message=f"{adapter_name} API error: {str(error)}",
+        status_code=status_code
+    )
+```
+
+#### Intelligent Error Message System
+
+**Context-Aware Error Messages:**
+```typescript
+// Centralized error message configuration
+export const errorConfig = {
+  errorPatterns: {
+    "ECONNREFUSED": {
+      message: "Connection refused - the agent service is not running...",
+      category: "network",
+      actionable: true
+    },
+    "AuthenticationError": {
+      message: "OpenAI authentication failed. Check your OPENAI_API_KEY...",
+      category: "authentication", 
+      actionable: true
+    }
+  },
+  fallbacks: {
+    network: "A network error occurred while connecting...",
+    authentication: "Authentication failed. Please check your API keys..."
+  }
+};
+```
+
+**Python Error Message System:**
+```python
+from typing import Dict, Optional
+
+ERROR_PATTERNS = {
+    "ConnectionError": {
+        "message": "Connection refused - the agent service is not running or not accessible. Please check that your agent is started and listening on the correct port.",
+        "category": "network",
+        "actionable": True
+    },
+    "AuthenticationError": {
+        "message": "OpenAI authentication failed. Please check your OPENAI_API_KEY environment variable or API key configuration.",
+        "category": "authentication", 
+        "actionable": True
+    },
+    "RateLimitError": {
+        "message": "OpenAI rate limit exceeded. Please wait a moment and try again, or check your OpenAI usage limits.",
+        "category": "network",
+        "actionable": True
+    }
+}
+
+FALLBACK_MESSAGES = {
+    "network": "A network error occurred while connecting to the agent service. Please check your connection and ensure the agent service is running.",
+    "authentication": "Authentication failed. Please check your API keys and credentials.",
+    "default": "An unexpected error occurred. Please check the logs for more details."
+}
+
+def generate_helpful_error_message(error: Exception, context: str = "connection") -> str:
+    """Generate context-aware error messages"""
+    error_type = type(error).__name__
+    base_message = str(error)
+    
+    # Check for specific error patterns
+    if error_type in ERROR_PATTERNS:
+        return ERROR_PATTERNS[error_type]["message"].replace("{context}", context)
+    
+    # Pattern matching in error message
+    for pattern, config in ERROR_PATTERNS.items():
+        if pattern.lower() in base_message.lower():
+            return config["message"].replace("{context}", context)
+    
+    # Fallback based on error category
+    if isinstance(error, (ConnectionError, ConnectionRefusedError)):
+        return FALLBACK_MESSAGES["network"]
+    elif "authentication" in base_message.lower() or "api key" in base_message.lower():
+        return FALLBACK_MESSAGES["authentication"]
+    
+    return FALLBACK_MESSAGES["default"]
+```
+
+### Observability and Middleware (Deep Dive)
+
+#### Progressive vs Batched Logging
+
+**TypeScript Observability Pattern:**
+```typescript
+interface CopilotObservabilityConfig {
+  enabled: boolean;
+  progressive: boolean;  // Stream each token vs batch complete responses
+  hooks: {
+    handleRequest: (data: LLMRequestData) => void | Promise<void>;
+    handleResponse: (data: LLMResponseData) => void | Promise<void>; 
+    handleError: (data: LLMErrorData) => void | Promise<void>;
+  };
+}
+
+// Progressive logging implementation:
+if (this.observability?.progressive) {
+  eventSource.stream = async (callback) => {
+    eventStream$.subscribe({
+      next: (event) => {
+        if (event.type === RuntimeEventTypes.TextMessageContent) {
+          // Log each chunk separately for progressive mode
+          this.observability.hooks.handleResponse({
+            threadId,
+            output: event.content,
+            isProgressiveChunk: true,
+            timestamp: Date.now()
+          });
+        }
+      }
+    });
+  };
+}
+```
+
+**Python Observability Implementation:**
+```python
+from dataclasses import dataclass
+from typing import Optional, Callable, Awaitable, Union, Any
+import time
+
+@dataclass  
+class LLMRequestData:
+    thread_id: Optional[str]
+    run_id: Optional[str]
+    model: Optional[str]
+    messages: list
+    actions: Optional[list]
+    forwarded_parameters: Optional[dict]
+    timestamp: float
+    provider: Optional[str]
+
+@dataclass
+class LLMResponseData:
+    thread_id: str
+    run_id: Optional[str] 
+    model: Optional[str]
+    output: Any
+    latency: float
+    timestamp: float
+    provider: Optional[str]
+    is_progressive_chunk: bool = False
+    is_final_response: bool = False
+
+class ObservabilityHooks:
+    def __init__(self,
+                 handle_request: Optional[Callable[[LLMRequestData], Awaitable[None]]] = None,
+                 handle_response: Optional[Callable[[LLMResponseData], Awaitable[None]]] = None,
+                 handle_error: Optional[Callable[[LLMErrorData], Awaitable[None]]] = None):
+        self.handle_request = handle_request
+        self.handle_response = handle_response  
+        self.handle_error = handle_error
+
+class CopilotObservabilityConfig:
+    def __init__(self, 
+                 enabled: bool = False,
+                 progressive: bool = True,
+                 hooks: Optional[ObservabilityHooks] = None):
+        self.enabled = enabled
+        self.progressive = progressive
+        self.hooks = hooks or ObservabilityHooks()
+
+class RuntimeObservability:
+    def __init__(self, config: CopilotObservabilityConfig):
+        self.config = config
+        self.streamed_chunks = []
+        
+    async def track_request(self, request_data: LLMRequestData):
+        if self.config.enabled and self.config.hooks.handle_request:
+            await self.config.hooks.handle_request(request_data)
+    
+    async def track_streaming_chunk(self, thread_id: str, content: str, **kwargs):
+        if not self.config.enabled or not self.config.progressive:
+            return
+            
+        self.streamed_chunks.append(content)
+        
+        if self.config.hooks.handle_response:
+            await self.config.hooks.handle_response(LLMResponseData(
+                thread_id=thread_id,
+                output=content,
+                timestamp=time.time(),
+                is_progressive_chunk=True,
+                **kwargs
+            ))
+    
+    async def track_final_response(self, thread_id: str, **kwargs):
+        if not self.config.enabled:
+            return
+            
+        output = self.streamed_chunks if self.config.progressive else kwargs.get('output', [])
+        
+        if self.config.hooks.handle_response:
+            await self.config.hooks.handle_response(LLMResponseData(
+                thread_id=thread_id,
+                output=output,
+                timestamp=time.time(),
+                is_final_response=True,
+                **kwargs
+            ))
+```
+
+#### Lifecycle Middleware Hooks
+
+**Request/Response Middleware:**
+```python
+from typing import Dict, Any, Optional, Callable, Awaitable
+
+class CopilotMiddleware:
+    def __init__(self,
+                 on_before_request: Optional[Callable] = None,
+                 on_after_request: Optional[Callable] = None):
+        self.on_before_request = on_before_request
+        self.on_after_request = on_after_request
+
+class MiddlewareContext:
+    def __init__(self,
+                 thread_id: Optional[str],
+                 run_id: Optional[str], 
+                 input_messages: List[Message],
+                 properties: Dict[str, Any],
+                 url: Optional[str] = None):
+        self.thread_id = thread_id
+        self.run_id = run_id
+        self.input_messages = input_messages
+        self.properties = properties
+        self.url = url
+
+# Usage in runtime:
+async def process_runtime_request(self, request: CopilotRuntimeRequest):
+    # Before request middleware
+    if self.middleware and self.middleware.on_before_request:
+        await self.middleware.on_before_request(MiddlewareContext(
+            thread_id=request.thread_id,
+            run_id=request.run_id,
+            input_messages=request.messages,
+            properties=request.properties
+        ))
+    
+    # Process request...
+    result = await self._process_request(request)
+    
+    # After request middleware  
+    if self.middleware and self.middleware.on_after_request:
+        await self.middleware.on_after_request(MiddlewareContext(
+            thread_id=result.thread_id,
+            run_id=result.run_id,
+            input_messages=request.messages,
+            output_messages=result.messages,
+            properties=request.properties
+        ))
+    
+    return result
+```
+
+This specification provides the foundation for creating a comprehensive Python port of CopilotRuntime that maintains compatibility with the existing TypeScript ecosystem while leveraging Python's strengths for agentic AI workflows.

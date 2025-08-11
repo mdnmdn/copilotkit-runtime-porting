@@ -163,6 +163,24 @@ Key input objects (abbreviated):
     - Sub-streams manage status transitions to Success/Failed and accumulate final message records for post-run persistence.
   - Meta-events field is a repeater that emits interrupt events mapped from runtime events.
 
+  - Agent runs vs. general runs
+    - If `agentSession` is present and `delegateAgentProcessingToServiceAdapter` is false, the runtime switches to `processAgentRequest`:
+      - Identifies the current agent as a `RemoteAgentAction` (selected from server-side actions).
+      - Builds `availableActionsForCurrentAgent` by including non-agent actions and other agents’ actions (excluding self to avoid loops).
+      - Calls the agent’s `remoteAgentHandler` to obtain an Observable of `RuntimeEvent` which is bridged into the GraphQL stream.
+    - Otherwise, `processRuntimeRequest` uses the configured `serviceAdapter` (LLM adapter) and server-side actions.
+
+  - Server-side actions and remote endpoints
+    - Server-side actions include:
+      - Locally configured actions (`actions`),
+      - LangServe chains (`langserve`),
+      - Remote endpoints (`remoteEndpoints`) transformed via `setupRemoteActions`,
+      - MCP-derived tools (fetched per request via `createMCPClient`, cached by endpoint).
+    - Remote endpoint discovery and execution:
+      - Self-hosted CopilotKit endpoints: `POST /info` for actions/agents, `POST /actions/execute`, `POST /agents/execute`.
+      - LangGraph Platform endpoints: discovered via LangGraph SDK; agent execution via `execute` and JSONL event streaming.
+    - `ActionInputAvailability.remote` actions are excluded from the core LLM loop, while disabled actions are filtered out before request.
+
 - Error Handling
   - Structured CopilotKit errors are bubbled as GraphQL errors with extensions and also reflected in `status` via `UnknownErrorResponse` where appropriate.
   - Network/streaming errors are converted to `CopilotKitLowLevelError` with helpful messages.
@@ -179,6 +197,35 @@ Key input objects (abbreviated):
 ### Headers and Context Properties
 - `x-copilotcloud-public-api-key`: used when `cloud` config is present; also enables onTrace telemetry.
 - `properties` argument: arbitrary JSON merged into server-side context; providers can read it.
+
+### Context, Middleware, and Observability
+- Context properties
+  - `properties` are merged from resolver `properties` argument and any server defaults, available to remote endpoints via `onBeforeRequest` header injection.
+  - Special keys may include `authorization` (forwarded as `Bearer` for LangGraph Platform) and `mcpServers` for dynamic MCP tool discovery.
+
+- Middleware hooks
+  - `onBeforeRequest({ threadId, runId, inputMessages, properties, url })` and `onAfterRequest({ threadId, runId, inputMessages, outputMessages, properties, url })` allow request-scoped processing.
+
+- Observability (optional, cloud)
+  - When enabled and a public API key is provided, the runtime logs request, progressive chunks, final responses, and errors via `observability.hooks`.
+
+### Retry and Networking
+- All remote HTTP calls use `fetchWithRetry` with exponential backoff and a retry policy targeting 408/429/5xx and network errors (ETIMEDOUT, ECONNREFUSED, etc.).
+- JSONL streams are parsed by `writeJsonLineResponseToEventStream`, which converts each line to a runtime event and completes the stream on EOF.
+
+### Remote Actions Protocol (Self-hosted and LangGraph Platform)
+- Discovery
+  - Self-hosted: `POST {endpoint}/info` with `{ properties, frontendUrl }` → `{ actions: Action[], agents: Agent[] }`.
+  - LangGraph Platform: SDK `assistants.search()` → agents with `{ assistant_id, graph_id }`.
+
+- Execution
+  - Actions: `POST {endpoint}/actions/execute` with `{ name, arguments, properties }` → `{ result }`.
+  - Agents: `POST {endpoint}/agents/execute` with `{ name, threadId, nodeName, messages, state, config, properties, actions, metaEvents }` → JSONL stream of runtime events.
+  - Headers are constructed via `onBeforeRequest({ ctx })` and include `Content-Type: application/json` plus any custom entries.
+
+### MCP Tooling (Experimental)
+- At request time, the runtime can fetch tools from MCP servers defined either in runtime config or supplied via `properties.mcpServers`.
+- Tools are converted into server-side actions and instruction text is injected into a system message to guide tool usage.
 
 ### Compatibility Considerations for Python Port
 - Support non-streaming first; ensure union types and fields match the TS contract so the client library continues to function.

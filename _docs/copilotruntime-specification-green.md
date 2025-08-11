@@ -1183,9 +1183,100 @@ interface CloudGuardrailsInput {
 3. **Response Handling**: Block or allow based on validation result
 4. **Error Reporting**: Send guardrails failures to client
 
-## Python Implementation Architecture
+## Python Implementation Architecture - Deep Analysis
 
-### 1. FastAPI Application Structure
+### 1. FastAPI Application Structure - Detailed Implementation
+
+The Python implementation will use **FastAPI as the web framework** with a modular architecture that mirrors the TypeScript structure while leveraging Python's strengths.
+
+**Application Architecture:**
+```python
+# main.py - Application entry point
+from fastapi import FastAPI, Request, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import asyncio
+from typing import AsyncGenerator
+
+from .graphql.schema import create_graphql_app
+from .runtime.copilot_runtime import CopilotRuntime
+from .service_adapters import ServiceAdapterRegistry
+from .observability import setup_observability, HealthCheckManager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await setup_observability()
+    await ServiceAdapterRegistry.initialize()
+    yield
+    # Shutdown
+    await ServiceAdapterRegistry.cleanup()
+
+app = FastAPI(
+    title="CopilotKit Runtime",
+    description="Python implementation of CopilotKit Runtime",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# GraphQL endpoint
+graphql_app = create_graphql_app()
+app.mount("/graphql", graphql_app)
+
+# Health check
+@app.get("/health")
+async def health_check():
+    health_manager = HealthCheckManager()
+    return await health_manager.check_system_health()
+```
+
+**Modular Structure:**
+```
+copilot_runtime_python/
+├── main.py                          # FastAPI application
+├── graphql/
+│   ├── schema.py                    # GraphQL schema definition
+│   ├── resolvers/
+│   │   ├── copilot_resolver.py      # Main resolver
+│   │   └── state_resolver.py        # State management
+│   ├── types/
+│   │   ├── inputs.py                # Input types
+│   │   ├── outputs.py               # Output types
+│   │   └── enums.py                 # Enumerations
+│   └── streaming.py                 # GraphQL streaming support
+├── runtime/
+│   ├── copilot_runtime.py           # Core runtime class
+│   ├── event_system.py              # Event handling
+│   └── remote_actions.py            # Remote action management
+├── service_adapters/
+│   ├── base.py                      # Adapter interface
+│   ├── openai_adapter.py            # OpenAI integration
+│   ├── langgraph_adapter.py         # LangGraph integration
+│   └── registry.py                  # Adapter registration
+├── integrations/
+│   ├── langgraph/
+│   │   ├── agent.py                 # LangGraph agent wrapper
+│   │   └── events.py                # Event mapping
+│   └── cloud/
+│       ├── auth.py                  # Cloud authentication
+│       └── guardrails.py            # Content moderation
+├── observability/
+│   ├── logging.py                   # Structured logging
+│   ├── telemetry.py                 # Analytics
+│   └── monitoring.py                # Health checks
+└── utils/
+    ├── errors.py                    # Error handling
+    └── types.py                     # Common types
+```
 
 ```python
 # Main application structure
@@ -1203,7 +1294,211 @@ async def health_check():
     return {"status": "ok"}
 ```
 
-### 2. GraphQL Implementation Options
+### 2. GraphQL Implementation - Detailed Analysis
+
+**Recommended: Strawberry GraphQL** for type safety and modern Python patterns.
+
+**Complete GraphQL Schema Implementation:**
+```python
+# graphql/schema.py
+import strawberry
+from strawberry.fastapi import GraphQLRouter
+from strawberry.subscriptions import GRAPHQL_TRANSPORT_WS_PROTOCOL
+from typing import AsyncGenerator, List, Optional
+import asyncio
+
+from .types.inputs import GenerateCopilotResponseInput
+from .types.outputs import CopilotResponse, AgentsResponse
+from .resolvers.copilot_resolver import CopilotResolver
+from .resolvers.state_resolver import StateResolver
+
+@strawberry.type
+class Query:
+    @strawberry.field
+    async def hello(self) -> str:
+        return "Hello World"
+    
+    @strawberry.field
+    async def available_agents(
+        self, 
+        info: strawberry.Info
+    ) -> AgentsResponse:
+        resolver = CopilotResolver()
+        return await resolver.available_agents(info.context)
+
+@strawberry.type
+class Mutation:
+    @strawberry.field
+    async def generate_copilot_response(
+        self,
+        data: GenerateCopilotResponseInput,
+        info: strawberry.Info,
+        properties: Optional[strawberry.scalars.JSON] = None
+    ) -> CopilotResponse:
+        resolver = CopilotResolver()
+        return await resolver.generate_copilot_response(
+            data, info.context, properties
+        )
+
+@strawberry.type
+class Subscription:
+    @strawberry.subscription
+    async def copilot_stream(
+        self,
+        data: GenerateCopilotResponseInput,
+        info: strawberry.Info
+    ) -> AsyncGenerator[CopilotResponse, None]:
+        resolver = CopilotResolver()
+        async for response in resolver.stream_copilot_response(data, info.context):
+            yield response
+
+schema = strawberry.Schema(
+    query=Query,
+    mutation=Mutation,
+    subscription=Subscription
+)
+
+def create_graphql_app():
+    return GraphQLRouter(
+        schema,
+        subscription_protocols=[GRAPHQL_TRANSPORT_WS_PROTOCOL],
+        context_getter=get_context
+    )
+
+async def get_context(request) -> dict:
+    return {
+        "request": request,
+        "runtime": get_runtime_instance(),
+        "logger": get_logger()
+    }
+```
+
+**Type Definitions with Strawberry:**
+```python
+# graphql/types/inputs.py
+import strawberry
+from typing import Optional, List
+from enum import Enum
+
+@strawberry.enum
+class MessageRole(Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    TOOL = "tool"
+    DEVELOPER = "developer"
+
+@strawberry.enum
+class CopilotRequestType(Enum):
+    CHAT = "Chat"
+    TASK = "Task"
+    TEXTAREA_COMPLETION = "TextareaCompletion"
+    TEXTAREA_POPOVER = "TextareaPopover"
+    SUGGESTION = "Suggestion"
+
+@strawberry.input
+class TextMessageInput:
+    content: str
+    role: MessageRole
+    parent_message_id: Optional[str] = None
+
+@strawberry.input
+class ActionExecutionMessageInput:
+    name: str
+    arguments: str  # JSON string
+    parent_message_id: Optional[str] = None
+
+@strawberry.input
+class MessageInput:
+    id: str
+    created_at: str  # ISO datetime string
+    text_message: Optional[TextMessageInput] = None
+    action_execution_message: Optional[ActionExecutionMessageInput] = None
+    # ... other message types
+
+@strawberry.input
+class GenerateCopilotResponseMetadataInput:
+    request_type: CopilotRequestType
+
+@strawberry.input
+class GenerateCopilotResponseInput:
+    metadata: GenerateCopilotResponseMetadataInput
+    messages: List[MessageInput]
+    thread_id: Optional[str] = None
+    run_id: Optional[str] = None
+    # ... other fields
+```
+
+**Streaming Implementation:**
+```python
+# graphql/streaming.py
+import asyncio
+from typing import AsyncGenerator, Dict, Any
+from dataclasses import dataclass
+
+@dataclass
+class StreamingContext:
+    event_queue: asyncio.Queue
+    stop_event: asyncio.Event
+    error_event: asyncio.Event
+    
+class GraphQLStreamer:
+    def __init__(self):
+        self.active_streams: Dict[str, StreamingContext] = {}
+    
+    async def create_stream(self, stream_id: str) -> AsyncGenerator[Dict[str, Any], None]:
+        context = StreamingContext(
+            event_queue=asyncio.Queue(),
+            stop_event=asyncio.Event(),
+            error_event=asyncio.Event()
+        )
+        
+        self.active_streams[stream_id] = context
+        
+        try:
+            while not context.stop_event.is_set():
+                try:
+                    # Wait for either an event or stop signal
+                    done, pending = await asyncio.wait([
+                        asyncio.create_task(context.event_queue.get()),
+                        asyncio.create_task(context.stop_event.wait()),
+                        asyncio.create_task(context.error_event.wait())
+                    ], return_when=asyncio.FIRST_COMPLETED)
+                    
+                    # Cancel pending tasks
+                    for task in pending:
+                        task.cancel()
+                    
+                    if context.error_event.is_set():
+                        break
+                    
+                    if context.stop_event.is_set():
+                        break
+                    
+                    # Get the event from completed task
+                    for task in done:
+                        if not task.cancelled():
+                            event = await task
+                            if event is not None:
+                                yield event
+                            break
+                            
+                except asyncio.CancelledError:
+                    break
+                    
+        finally:
+            # Cleanup
+            if stream_id in self.active_streams:
+                del self.active_streams[stream_id]
+    
+    async def emit_to_stream(self, stream_id: str, event: Dict[str, Any]):
+        if stream_id in self.active_streams:
+            await self.active_streams[stream_id].event_queue.put(event)
+    
+    async def stop_stream(self, stream_id: str):
+        if stream_id in self.active_streams:
+            self.active_streams[stream_id].stop_event.set()
+```
 
 **Option A: Strawberry GraphQL**
 - Type-safe Python GraphQL library
@@ -1216,38 +1511,275 @@ async def health_check():
 - Flexible resolver system
 - Good streaming support
 
-### 3. Event System Implementation
+### 3. Event System Implementation - Complete Architecture
 
+**Advanced Event System with RxJS-like Capabilities:**
 ```python
+# runtime/event_system.py
 import asyncio
-from typing import AsyncGenerator, Dict, Any
+import weakref
+from typing import AsyncGenerator, Dict, Any, List, Callable, Optional, TypeVar, Generic
 from enum import Enum
+from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
+import logging
+from contextlib import asynccontextmanager
+
+T = TypeVar('T')
 
 class RuntimeEventTypes(Enum):
     TEXT_MESSAGE_START = "TextMessageStart"
     TEXT_MESSAGE_CONTENT = "TextMessageContent"
     TEXT_MESSAGE_END = "TextMessageEnd"
-    # ... other events
+    ACTION_EXECUTION_START = "ActionExecutionStart"
+    ACTION_EXECUTION_ARGS = "ActionExecutionArgs"
+    ACTION_EXECUTION_END = "ActionExecutionEnd"
+    ACTION_EXECUTION_RESULT = "ActionExecutionResult"
+    AGENT_STATE_MESSAGE = "AgentStateMessage"
+    META_EVENT = "MetaEvent"
+
+@dataclass
+class RuntimeEvent:
+    type: RuntimeEventTypes
+    data: Dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=lambda: asyncio.get_event_loop().time())
+    message_id: Optional[str] = None
+    parent_message_id: Optional[str] = None
+
+class EventFilter(ABC):
+    @abstractmethod
+    def should_include(self, event: RuntimeEvent) -> bool:
+        pass
+
+class EventTypeFilter(EventFilter):
+    def __init__(self, event_types: List[RuntimeEventTypes]):
+        self.event_types = set(event_types)
+    
+    def should_include(self, event: RuntimeEvent) -> bool:
+        return event.type in self.event_types
+
+class MessageIdFilter(EventFilter):
+    def __init__(self, message_id: str):
+        self.message_id = message_id
+    
+    def should_include(self, event: RuntimeEvent) -> bool:
+        return event.message_id == self.message_id
+
+class EventTransformer(ABC, Generic[T]):
+    @abstractmethod
+    async def transform(self, event: RuntimeEvent) -> T:
+        pass
+
+class EventSubscription:
+    def __init__(self, queue: asyncio.Queue, filters: List[EventFilter] = None):
+        self.queue = queue
+        self.filters = filters or []
+        self.active = True
+    
+    def should_receive(self, event: RuntimeEvent) -> bool:
+        if not self.active:
+            return False
+        return all(f.should_include(event) for f in self.filters)
+    
+    async def emit(self, event: RuntimeEvent):
+        if self.should_receive(event):
+            try:
+                await self.queue.put(event)
+            except asyncio.QueueFull:
+                logging.warning(f"Event queue full, dropping event: {event.type}")
+    
+    def unsubscribe(self):
+        self.active = False
 
 class RuntimeEventSource:
-    def __init__(self):
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._subscribers: List[asyncio.Queue] = []
+    def __init__(self, max_history: int = 1000):
+        self._subscribers: List[EventSubscription] = []
+        self._event_history: List[RuntimeEvent] = []
+        self._max_history = max_history
+        self._lock = asyncio.Lock()
+        self._logger = logging.getLogger(__name__)
     
-    async def emit(self, event: Dict[str, Any]):
-        await self._queue.put(event)
-        for subscriber in self._subscribers:
-            await subscriber.put(event)
+    async def emit(self, event: RuntimeEvent):
+        async with self._lock:
+            # Add to history
+            self._event_history.append(event)
+            if len(self._event_history) > self._max_history:
+                self._event_history.pop(0)
+            
+            # Emit to all subscribers
+            tasks = []
+            for subscription in self._subscribers[:]:  # Copy to avoid modification during iteration
+                if subscription.active:
+                    tasks.append(subscription.emit(event))
+                else:
+                    self._subscribers.remove(subscription)
+            
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
     
-    async def subscribe(self) -> AsyncGenerator[Dict[str, Any], None]:
-        subscriber_queue = asyncio.Queue()
-        self._subscribers.append(subscriber_queue)
+    async def subscribe(
+        self, 
+        filters: List[EventFilter] = None,
+        queue_size: int = 100,
+        replay_history: bool = False
+    ) -> AsyncGenerator[RuntimeEvent, None]:
+        queue = asyncio.Queue(maxsize=queue_size)
+        subscription = EventSubscription(queue, filters)
+        
+        async with self._lock:
+            self._subscribers.append(subscription)
+            
+            # Replay history if requested
+            if replay_history:
+                for event in self._event_history:
+                    if subscription.should_receive(event):
+                        await queue.put(event)
+        
         try:
-            while True:
-                event = await subscriber_queue.get()
-                yield event
+            while subscription.active:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    yield event
+                except asyncio.TimeoutError:
+                    continue
+                except asyncio.CancelledError:
+                    break
         finally:
-            self._subscribers.remove(subscriber_queue)
+            subscription.unsubscribe()
+    
+    def create_filtered_stream(
+        self, 
+        filters: List[EventFilter],
+        queue_size: int = 100
+    ) -> 'FilteredEventStream':
+        return FilteredEventStream(self, filters, queue_size)
+    
+    async def wait_for_event(
+        self, 
+        event_type: RuntimeEventTypes, 
+        timeout: float = 30.0,
+        message_id: Optional[str] = None
+    ) -> RuntimeEvent:
+        """Wait for a specific event type, optionally filtered by message ID"""
+        filters = [EventTypeFilter([event_type])]
+        if message_id:
+            filters.append(MessageIdFilter(message_id))
+        
+        async with asyncio.timeout(timeout):
+            async for event in self.subscribe(filters=filters):
+                return event
+        
+        raise asyncio.TimeoutError(f"Event {event_type} not received within {timeout}s")
+
+class FilteredEventStream:
+    def __init__(self, source: RuntimeEventSource, filters: List[EventFilter], queue_size: int):
+        self.source = source
+        self.filters = filters
+        self.queue_size = queue_size
+    
+    async def __aiter__(self):
+        async for event in self.source.subscribe(self.filters, self.queue_size):
+            yield event
+    
+    def take_until(self, condition: Callable[[RuntimeEvent], bool]) -> 'TakeUntilStream':
+        return TakeUntilStream(self, condition)
+    
+    def skip_while(self, condition: Callable[[RuntimeEvent], bool]) -> 'SkipWhileStream':
+        return SkipWhileStream(self, condition)
+    
+    def map(self, transformer: EventTransformer[T]) -> 'MappedStream[T]':
+        return MappedStream(self, transformer)
+
+class TakeUntilStream:
+    def __init__(self, source: FilteredEventStream, condition: Callable[[RuntimeEvent], bool]):
+        self.source = source
+        self.condition = condition
+    
+    async def __aiter__(self):
+        async for event in self.source:
+            yield event
+            if self.condition(event):
+                break
+
+class SkipWhileStream:
+    def __init__(self, source: FilteredEventStream, condition: Callable[[RuntimeEvent], bool]):
+        self.source = source
+        self.condition = condition
+        self.skipping = True
+    
+    async def __aiter__(self):
+        async for event in self.source:
+            if self.skipping and self.condition(event):
+                continue
+            self.skipping = False
+            yield event
+
+class MappedStream(Generic[T]):
+    def __init__(self, source: FilteredEventStream, transformer: EventTransformer[T]):
+        self.source = source
+        self.transformer = transformer
+    
+    async def __aiter__(self):
+        async for event in self.source:
+            yield await self.transformer.transform(event)
+
+# Event coordination utilities
+class EventCoordinator:
+    def __init__(self, event_source: RuntimeEventSource):
+        self.event_source = event_source
+    
+    @asynccontextmanager
+    async def message_lifecycle(self, message_id: str):
+        """Context manager for coordinating message start/end events"""
+        await self.event_source.emit(RuntimeEvent(
+            type=RuntimeEventTypes.TEXT_MESSAGE_START,
+            message_id=message_id
+        ))
+        
+        try:
+            yield message_id
+        finally:
+            await self.event_source.emit(RuntimeEvent(
+                type=RuntimeEventTypes.TEXT_MESSAGE_END,
+                message_id=message_id
+            ))
+    
+    async def emit_content_chunk(self, message_id: str, content: str):
+        """Emit a content chunk for streaming messages"""
+        await self.event_source.emit(RuntimeEvent(
+            type=RuntimeEventTypes.TEXT_MESSAGE_CONTENT,
+            message_id=message_id,
+            data={"content": content}
+        ))
+    
+    async def emit_action_execution(
+        self, 
+        action_execution_id: str, 
+        action_name: str, 
+        args: Dict[str, Any],
+        parent_message_id: Optional[str] = None
+    ):
+        """Emit action execution sequence"""
+        # Start
+        await self.event_source.emit(RuntimeEvent(
+            type=RuntimeEventTypes.ACTION_EXECUTION_START,
+            message_id=action_execution_id,
+            parent_message_id=parent_message_id,
+            data={"action_name": action_name}
+        ))
+        
+        # Args
+        await self.event_source.emit(RuntimeEvent(
+            type=RuntimeEventTypes.ACTION_EXECUTION_ARGS,
+            message_id=action_execution_id,
+            data={"args": args}
+        ))
+        
+        # End (result will be emitted separately)
+        await self.event_source.emit(RuntimeEvent(
+            type=RuntimeEventTypes.ACTION_EXECUTION_END,
+            message_id=action_execution_id
+        ))
 ```
 
 ### 4. Service Adapter Pattern
