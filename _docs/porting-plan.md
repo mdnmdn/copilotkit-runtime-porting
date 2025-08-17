@@ -175,18 +175,6 @@ Acceptance Criteria
 
 ---
 
-## Estimates (Rough)
-- Phase 0–1: 3–5 days
-- Phase 2: 3–4 days
-- Phase 3: 4–6 days
-- Phase 4: 4–6 days
-- Phase 5: 2–4 days
-- Phase 6: 4–7 days
-- Phase 7: 3–5 days
-- Phase 8: 2–4 days
-
----
-
 ## Checklists
 - Schema parity with TS (types, unions, enums)
 - Endpoint path and headers compatible with frontend
@@ -197,5 +185,3 @@ Acceptance Criteria
 - Persistence driver pluggable and tested
 - Multi-agent orchestration validated
 - Packaging and CI finalized
-
-
