@@ -42,7 +42,7 @@ class TestRequestLoggingMiddleware:
         middleware = RequestLoggingMiddleware(app, config)
 
         assert middleware.config == config
-        assert hasattr(middleware, 'logger')
+        assert hasattr(middleware, "logger")
 
     @pytest.mark.asyncio
     async def test_request_processing_success(self):
@@ -68,7 +68,7 @@ class TestRequestLoggingMiddleware:
         mock_response.headers = {}
         call_next = AsyncMock(return_value=mock_response)
 
-        with patch.object(middleware, 'logger') as mock_logger:
+        with patch.object(middleware, "logger") as mock_logger:
             response = await middleware.dispatch(request, call_next)
 
             # Verify response
@@ -109,7 +109,7 @@ class TestRequestLoggingMiddleware:
         test_error = Exception("Test error")
         call_next = AsyncMock(side_effect=test_error)
 
-        with patch.object(middleware, 'logger') as mock_logger:
+        with patch.object(middleware, "logger") as mock_logger:
             response = await middleware.dispatch(request, call_next)
 
             # Verify error response was created
@@ -188,7 +188,7 @@ class TestErrorHandlingMiddleware:
         middleware = ErrorHandlingMiddleware(app, config)
 
         assert middleware.config == config
-        assert hasattr(middleware, 'logger')
+        assert hasattr(middleware, "logger")
 
     @pytest.mark.asyncio
     async def test_successful_request_passthrough(self):
@@ -253,7 +253,7 @@ class TestErrorHandlingMiddleware:
         test_error = Exception("Test error")
         call_next = AsyncMock(side_effect=test_error)
 
-        with patch.object(middleware, 'logger') as mock_logger:
+        with patch.object(middleware, "logger") as mock_logger:
             response = await middleware.dispatch(request, call_next)
 
             # Verify error response
@@ -280,7 +280,7 @@ class TestErrorHandlingMiddleware:
         test_error = Exception("Test error")
         call_next = AsyncMock(side_effect=test_error)
 
-        with patch.object(middleware, 'logger') as mock_logger:
+        with patch.object(middleware, "logger") as mock_logger:
             response = await middleware.dispatch(request, call_next)
 
             # Verify generic error message in production
@@ -303,7 +303,7 @@ class TestAuthenticationMiddleware:
         middleware = AuthenticationMiddleware(app, config)
 
         assert middleware.config == config
-        assert hasattr(middleware, 'logger')
+        assert hasattr(middleware, "logger")
 
     @pytest.mark.asyncio
     async def test_auth_header_extraction(self):
@@ -314,10 +314,7 @@ class TestAuthenticationMiddleware:
 
         request = Mock(spec=Request)
         request.state = Mock()
-        request.headers = {
-            "authorization": "Bearer test-token",
-            "x-api-key": "api-key-123"
-        }
+        request.headers = {"authorization": "Bearer test-token", "x-api-key": "api-key-123"}
 
         mock_response = Mock(spec=Response)
         call_next = AsyncMock(return_value=mock_response)
@@ -359,7 +356,7 @@ class TestMiddlewareSetupFunctions:
         app = FastAPI()
         config = RuntimeConfig(cors_origins=["http://localhost:3000", "https://example.com"])
 
-        with patch.object(app, 'add_middleware') as mock_add_middleware:
+        with patch.object(app, "add_middleware") as mock_add_middleware:
             setup_cors_middleware(app, config)
 
             # Verify middleware was added
@@ -368,20 +365,21 @@ class TestMiddlewareSetupFunctions:
 
             # Check that CORSMiddleware was added with correct config
             from fastapi.middleware.cors import CORSMiddleware
+
             assert call_args[0][0] == CORSMiddleware
 
             kwargs = call_args[1]
-            assert kwargs['allow_origins'] == ["http://localhost:3000", "https://example.com"]
-            assert kwargs['allow_credentials'] is True
-            assert "GET" in kwargs['allow_methods']
-            assert "POST" in kwargs['allow_methods']
+            assert kwargs["allow_origins"] == ["http://localhost:3000", "https://example.com"]
+            assert kwargs["allow_credentials"] is True
+            assert "GET" in kwargs["allow_methods"]
+            assert "POST" in kwargs["allow_methods"]
 
     def test_setup_cors_middleware_no_origins(self):
         """Test CORS middleware setup with no origins configured."""
         app = FastAPI()
         config = RuntimeConfig(cors_origins=[])
 
-        with patch.object(app, 'add_middleware') as mock_add_middleware:
+        with patch.object(app, "add_middleware") as mock_add_middleware:
             setup_cors_middleware(app, config)
 
             # Middleware should not be added
@@ -392,7 +390,7 @@ class TestMiddlewareSetupFunctions:
         app = FastAPI()
         config = RuntimeConfig()
 
-        with patch.object(app, 'add_middleware') as mock_add_middleware:
+        with patch.object(app, "add_middleware") as mock_add_middleware:
             setup_logging_middleware(app, config)
 
             mock_add_middleware.assert_called_once()
@@ -404,8 +402,10 @@ class TestMiddlewareSetupFunctions:
         app = FastAPI()
         config = RuntimeConfig()
 
-        with patch.object(app, 'add_middleware') as mock_add_middleware, \
-             patch.object(app, 'exception_handler') as mock_exception_handler:
+        with (
+            patch.object(app, "add_middleware") as mock_add_middleware,
+            patch.object(app, "exception_handler") as mock_exception_handler,
+        ):
 
             setup_error_handling_middleware(app, config)
 
@@ -415,14 +415,16 @@ class TestMiddlewareSetupFunctions:
             assert call_args[0][0] == ErrorHandlingMiddleware
 
             # Verify exception handlers were added
-            assert mock_exception_handler.call_count >= 2  # At least ValidationError and HTTPException
+            assert (
+                mock_exception_handler.call_count >= 2
+            )  # At least ValidationError and HTTPException
 
     def test_setup_authentication_middleware(self):
         """Test authentication middleware setup."""
         app = FastAPI()
         config = RuntimeConfig()
 
-        with patch.object(app, 'add_middleware') as mock_add_middleware:
+        with patch.object(app, "add_middleware") as mock_add_middleware:
             setup_authentication_middleware(app, config)
 
             mock_add_middleware.assert_called_once()
@@ -434,10 +436,16 @@ class TestMiddlewareSetupFunctions:
         app = FastAPI()
         config = RuntimeConfig(cors_origins=["*"])
 
-        with patch('copilotkit.runtime_py.app.middleware.setup_cors_middleware') as mock_cors, \
-             patch('copilotkit.runtime_py.app.middleware.setup_error_handling_middleware') as mock_error, \
-             patch('copilotkit.runtime_py.app.middleware.setup_authentication_middleware') as mock_auth, \
-             patch('copilotkit.runtime_py.app.middleware.setup_logging_middleware') as mock_logging:
+        with (
+            patch("copilotkit.runtime_py.app.middleware.setup_cors_middleware") as mock_cors,
+            patch(
+                "copilotkit.runtime_py.app.middleware.setup_error_handling_middleware"
+            ) as mock_error,
+            patch(
+                "copilotkit.runtime_py.app.middleware.setup_authentication_middleware"
+            ) as mock_auth,
+            patch("copilotkit.runtime_py.app.middleware.setup_logging_middleware") as mock_logging,
+        ):
 
             setup_all_middleware(app, config)
 

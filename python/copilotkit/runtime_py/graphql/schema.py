@@ -11,11 +11,13 @@ from __future__ import annotations
 import datetime
 import logging
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import strawberry
 from strawberry import printer
-from strawberry.types import Info
+
+if TYPE_CHECKING:
+    from strawberry.types import Info
 
 
 # GraphQL Enums (matching TypeScript schema exactly)
@@ -237,7 +239,7 @@ class Query:
                     name=agent.name,
                     description=agent.description,
                     version=agent.version,
-                    capabilities=agent.capabilities
+                    capabilities=agent.capabilities,
                 )
                 for agent in agent_descriptors
             ]
@@ -273,20 +275,12 @@ class Query:
 
             logger.debug(f"Runtime info: {len(providers)} providers, {len(agents)} agents")
 
-            return RuntimeInfo(
-                version="0.1.0",
-                providers=providers,
-                agents_count=len(agents)
-            )
+            return RuntimeInfo(version="0.1.0", providers=providers, agents_count=len(agents))
 
         except Exception as e:
             logger.error(f"Error retrieving runtime info: {e}")
             # Return default values rather than failing the query
-            return RuntimeInfo(
-                version="0.1.0",
-                providers=[],
-                agents_count=0
-            )
+            return RuntimeInfo(version="0.1.0", providers=[], agents_count=0)
 
 
 # Mutation Resolvers
@@ -318,7 +312,6 @@ class Mutation:
 
         try:
             # Get runtime from GraphQL context
-            runtime = info.context.runtime
 
             # Log the operation
             info.context.log_operation("generate_copilot_response", "mutation")
@@ -338,7 +331,7 @@ class Mutation:
                 role=MessageRole.ASSISTANT,
                 content="Message received. Full agent execution will be implemented in Phase 2.",
                 status=MessageStatus.COMPLETED,
-                created_at=datetime.datetime.utcnow()
+                created_at=datetime.datetime.utcnow(),
             )
 
             return CopilotResponse(

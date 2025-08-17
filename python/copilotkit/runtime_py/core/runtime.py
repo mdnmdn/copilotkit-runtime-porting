@@ -258,10 +258,12 @@ class CopilotRuntime:
                 }
             except Exception as e:
                 self.logger.error(f"Error getting runtime info: {e}")
-                raise HTTPException(status_code=500, detail="Internal server error")
+                raise HTTPException(status_code=500, detail="Internal server error") from e
 
         # Mount GraphQL endpoints
-        self._mount_graphql_endpoints(app, f"{self._mount_path}/graphql", include_graphql_playground)
+        self._mount_graphql_endpoints(
+            app, f"{self._mount_path}/graphql", include_graphql_playground
+        )
 
         self.logger.info(f"Runtime mounted to FastAPI app at path: {self._mount_path}")
         self.logger.info(f"GraphQL endpoint available at: {self._mount_path}/graphql")
@@ -286,10 +288,7 @@ class CopilotRuntime:
         self.logger.info("Comprehensive middleware stack setup completed")
 
     def _mount_graphql_endpoints(
-        self,
-        app: FastAPI,
-        graphql_path: str,
-        include_playground: bool
+        self, app: FastAPI, graphql_path: str, include_playground: bool
     ) -> None:
         """
         Mount GraphQL endpoints to the FastAPI application.

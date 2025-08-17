@@ -42,9 +42,33 @@ Configuration:
     - database_url: PostgreSQL connection string
 """
 
+import json
+from abc import ABC, abstractmethod
+from typing import Any
+
+
+# Basic StorageBackend interface for type annotations
+class StorageBackend(ABC):
+    """Abstract base class for storage backends."""
+
+    @abstractmethod
+    async def get(self, key: str) -> Any:
+        """Get value by key."""
+        pass
+
+    @abstractmethod
+    async def set(self, key: str, value: Any) -> None:
+        """Set value by key."""
+        pass
+
+    @abstractmethod
+    async def delete(self, key: str) -> None:
+        """Delete value by key."""
+        pass
+
+
 # Import base interfaces (will be implemented in later phases)
 # from copilotkit.runtime_py.storage.base import (
-#     StorageBackend,
 #     StorageError,
 #     StateNotFoundError,
 #     StorageManager,
@@ -56,7 +80,7 @@ Configuration:
 __version__ = "0.1.0"
 
 # Storage backend registry for dynamic loading
-STORAGE_BACKENDS = {
+STORAGE_BACKENDS: dict[str, str] = {
     # Will be populated as backends are implemented
     # "memory": "copilotkit.runtime_py.storage.memory:MemoryStorage",
     # "redis": "copilotkit.runtime_py.storage.redis:RedisStorage",
@@ -74,7 +98,7 @@ def get_available_backends() -> dict[str, str]:
     return STORAGE_BACKENDS.copy()
 
 
-def create_storage_backend(backend_name: str, **config) -> "StorageBackend":
+def create_storage_backend(backend_name: str, **config: Any) -> StorageBackend:
     """
     Create a storage backend instance by name.
 
@@ -101,9 +125,10 @@ def create_storage_backend(backend_name: str, **config) -> "StorageBackend":
 
         module = importlib.import_module(module_path)
         backend_class = getattr(module, class_name)
-        return backend_class(**config)
+        # Type: ignore since we're dynamically importing and can't verify at static analysis time
+        return backend_class(**config)  # type: ignore[no-any-return]
     except (ImportError, AttributeError) as e:
-        raise ImportError(f"Failed to import storage backend '{backend_name}': {e}")
+        raise ImportError(f"Failed to import storage backend '{backend_name}': {e}") from e
 
 
 # Storage utility functions
@@ -117,12 +142,10 @@ def serialize_state(state_data: dict) -> str:
     Returns:
         Serialized state as JSON string
     """
-    import json
-
     return json.dumps(state_data, default=str, ensure_ascii=False)
 
 
-def deserialize_state(state_json: str) -> dict:
+def deserialize_state(state_json: str) -> dict[str, Any]:
     """
     Deserialize state data from storage.
 
@@ -135,12 +158,10 @@ def deserialize_state(state_json: str) -> dict:
     Raises:
         ValueError: If JSON is invalid
     """
-    import json
-
     try:
-        return json.loads(state_json)
+        return json.loads(state_json)  # type: ignore[no-any-return]
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid state JSON: {e}")
+        raise ValueError(f"Invalid state JSON: {e}") from e
 
 
 def generate_state_key(thread_id: str, agent_name: str) -> str:

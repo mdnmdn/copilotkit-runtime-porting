@@ -74,7 +74,7 @@ def load_config_file(config_path: str) -> dict[str, Any]:
             config_data = json.load(f)
         return config_data
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in configuration file: {e}")
+        raise ValueError(f"Invalid JSON in configuration file: {e}") from e
 
 
 def create_runtime_config(args: argparse.Namespace) -> RuntimeConfig:
@@ -280,15 +280,17 @@ def validate_args(args: argparse.Namespace) -> None:
         args.workers = 1
 
     # Validate storage configuration
-    if args.state_store == "redis" and not args.redis_url:
-        if not os.getenv("COPILOTKIT_REDIS_URL"):
-            print("Error: Redis URL required when using Redis state store")
-            sys.exit(1)
+    if args.state_store == "redis" and not args.redis_url and not os.getenv("COPILOTKIT_REDIS_URL"):
+        print("Error: Redis URL required when using Redis state store")
+        sys.exit(1)
 
-    if args.state_store == "postgresql" and not args.database_url:
-        if not os.getenv("COPILOTKIT_DATABASE_URL"):
-            print("Error: Database URL required when using PostgreSQL state store")
-            sys.exit(1)
+    if (
+        args.state_store == "postgresql"
+        and not args.database_url
+        and not os.getenv("COPILOTKIT_DATABASE_URL")
+    ):
+        print("Error: Database URL required when using PostgreSQL state store")
+        sys.exit(1)
 
 
 def run_server(args: argparse.Namespace) -> None:
@@ -312,7 +314,7 @@ def run_server(args: argparse.Namespace) -> None:
 
     # Create FastAPI app
     try:
-        app = create_app()
+        create_app()
         logger.info("FastAPI application created successfully")
     except Exception as e:
         logger.error(f"Failed to create FastAPI application: {e}")

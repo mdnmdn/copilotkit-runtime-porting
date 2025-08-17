@@ -126,7 +126,7 @@ class TestGraphQLContext:
 
         assert context.get_user_agent() == "unknown"
 
-    @patch('logging.getLogger')
+    @patch("logging.getLogger")
     def test_log_operation(self, mock_get_logger):
         """Test operation logging functionality."""
         runtime = Mock()
@@ -183,7 +183,7 @@ class TestGraphQLRouterCreation:
         """Test GraphQL router creation."""
         runtime = Mock(spec=CopilotRuntime)
 
-        with patch('copilotkit.runtime_py.app.runtime_mount.GraphQLRouter') as mock_router_class:
+        with patch("copilotkit.runtime_py.app.runtime_mount.GraphQLRouter") as mock_router_class:
             mock_router = Mock()
             mock_router_class.return_value = mock_router
 
@@ -196,9 +196,9 @@ class TestGraphQLRouterCreation:
 
             # Verify keyword arguments
             kwargs = call_args[1]
-            assert kwargs['path'] == "/test-graphql"
-            assert kwargs['graphql_ide'] == "playground"
-            assert 'context_getter' in kwargs
+            assert kwargs["path"] == "/test-graphql"
+            assert kwargs["graphql_ide"] == "playground"
+            assert "context_getter" in kwargs
 
             assert router == mock_router
 
@@ -206,14 +206,14 @@ class TestGraphQLRouterCreation:
         """Test GraphQL router creation without playground."""
         runtime = Mock(spec=CopilotRuntime)
 
-        with patch('copilotkit.runtime_py.app.runtime_mount.GraphQLRouter') as mock_router_class:
+        with patch("copilotkit.runtime_py.app.runtime_mount.GraphQLRouter") as mock_router_class:
             mock_router = Mock()
             mock_router_class.return_value = mock_router
 
             router = create_graphql_router(runtime, "/graphql", False)
 
             kwargs = mock_router_class.call_args[1]
-            assert kwargs['graphql_ide'] is None
+            assert kwargs["graphql_ide"] is None
 
 
 class TestGraphQLMounting:
@@ -228,19 +228,22 @@ class TestGraphQLMounting:
         runtime.discover_agents = AsyncMock(return_value=[])
         runtime.list_providers.return_value = ["test-provider"]
 
-        with patch('copilotkit.runtime_py.app.runtime_mount.create_graphql_router') as mock_create_router:
-            # Create a mock router with routes attribute (required by FastAPI)
+        with patch(
+            "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+        ) as mock_create_router:
+            # Create a mock router with all required FastAPI router attributes
             mock_router = Mock()
             mock_router.routes = []  # Empty routes list for FastAPI compatibility
+            mock_router.on_startup = []  # Required by FastAPI router
+            mock_router.on_shutdown = []  # Required by FastAPI router
+            mock_router.lifespan = None  # Required by FastAPI router
             mock_create_router.return_value = mock_router
 
             mount_graphql_to_fastapi(app, runtime, "/test-graphql", True, True)
 
             # Verify router creation was called
             mock_create_router.assert_called_once_with(
-                runtime=runtime,
-                path="/test-graphql",
-                include_playground=True
+                runtime=runtime, path="/test-graphql", include_playground=True
             )
 
     @pytest.mark.asyncio
@@ -250,17 +253,24 @@ class TestGraphQLMounting:
         runtime = Mock(spec=CopilotRuntime)
 
         # Mock runtime methods
-        runtime.discover_agents = AsyncMock(return_value=[
-            AgentDescriptor(name="test-agent", description="Test agent")
-        ])
+        runtime.discover_agents = AsyncMock(
+            return_value=[AgentDescriptor(name="test-agent", description="Test agent")]
+        )
         runtime.list_providers.return_value = ["test-provider"]
 
-        with patch('copilotkit.runtime_py.app.runtime_mount.create_graphql_router') as mock_create_router, \
-             patch('copilotkit.runtime_py.graphql.schema.get_schema_sdl') as mock_get_sdl:
+        with (
+            patch(
+                "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+            ) as mock_create_router,
+            patch("copilotkit.runtime_py.graphql.schema.get_schema_sdl") as mock_get_sdl,
+        ):
 
-            # Create mock router with routes
+            # Create a mock router with all required FastAPI router attributes
             mock_router = Mock()
             mock_router.routes = []
+            mock_router.on_startup = []
+            mock_router.on_shutdown = []
+            mock_router.lifespan = None
             mock_create_router.return_value = mock_router
 
             mock_get_sdl.return_value = "schema { query: Query }"
@@ -290,10 +300,15 @@ class TestGraphQLMounting:
         runtime.discover_agents = AsyncMock(side_effect=Exception("Test error"))
         runtime.list_providers.return_value = ["test-provider"]
 
-        with patch('copilotkit.runtime_py.app.runtime_mount.create_graphql_router') as mock_create_router:
-            # Create mock router with routes
+        with patch(
+            "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+        ) as mock_create_router:
+            # Create a mock router with all required FastAPI router attributes
             mock_router = Mock()
             mock_router.routes = []
+            mock_router.on_startup = []
+            mock_router.on_shutdown = []
+            mock_router.lifespan = None
             mock_create_router.return_value = mock_router
 
             mount_graphql_to_fastapi(app, runtime, "/graphql", True, True)
@@ -317,12 +332,19 @@ class TestGraphQLMounting:
         runtime.discover_agents = AsyncMock(return_value=[])
         runtime.list_providers.return_value = []
 
-        with patch('copilotkit.runtime_py.app.runtime_mount.create_graphql_router') as mock_create_router, \
-             patch('copilotkit.runtime_py.graphql.schema.get_schema_sdl') as mock_get_sdl:
+        with (
+            patch(
+                "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+            ) as mock_create_router,
+            patch("copilotkit.runtime_py.graphql.schema.get_schema_sdl") as mock_get_sdl,
+        ):
 
-            # Create mock router with routes
+            # Create a mock router with all required FastAPI router attributes
             mock_router = Mock()
             mock_router.routes = []
+            mock_router.on_startup = []
+            mock_router.on_shutdown = []
+            mock_router.lifespan = None
             mock_create_router.return_value = mock_router
 
             mock_get_sdl.return_value = "schema { query: Query }"
@@ -362,14 +384,16 @@ class TestGraphQLResolvers:
         """Test successful available_agents resolver."""
         # Create mock info object with context
         mock_runtime = Mock(spec=CopilotRuntime)
-        mock_runtime.discover_agents = AsyncMock(return_value=[
-            AgentDescriptor(
-                name="test-agent",
-                description="Test agent",
-                version="1.0.0",
-                capabilities=["chat", "search"]
-            )
-        ])
+        mock_runtime.discover_agents = AsyncMock(
+            return_value=[
+                AgentDescriptor(
+                    name="test-agent",
+                    description="Test agent",
+                    version="1.0.0",
+                    capabilities=["chat", "search"],
+                )
+            ]
+        )
 
         mock_context = Mock()
         mock_context.runtime = mock_runtime
@@ -417,10 +441,12 @@ class TestGraphQLResolvers:
         """Test successful runtime_info resolver."""
         mock_runtime = Mock(spec=CopilotRuntime)
         mock_runtime.list_providers.return_value = ["langgraph", "crewai"]
-        mock_runtime.discover_agents = AsyncMock(return_value=[
-            AgentDescriptor(name="agent1", description="Agent 1"),
-            AgentDescriptor(name="agent2", description="Agent 2"),
-        ])
+        mock_runtime.discover_agents = AsyncMock(
+            return_value=[
+                AgentDescriptor(name="agent1", description="Agent 1"),
+                AgentDescriptor(name="agent2", description="Agent 2"),
+            ]
+        )
 
         mock_context = Mock()
         mock_context.runtime = mock_runtime
@@ -474,7 +500,7 @@ class TestGraphQLSchema:
         # Schema should be created without errors
         assert schema is not None
         # Check for schema attributes that exist in Strawberry schema
-        assert hasattr(schema, '_schema')
+        assert hasattr(schema, "_schema")
 
     def test_get_schema_sdl(self):
         """Test getting schema SDL."""

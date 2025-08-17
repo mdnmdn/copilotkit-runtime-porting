@@ -58,7 +58,7 @@ from copilotkit.runtime_py.core.provider import (
 __version__ = "0.1.0"
 
 # Provider registry for dynamic discovery
-AVAILABLE_PROVIDERS = {
+AVAILABLE_PROVIDERS: dict[str, str] = {
     # Will be populated as providers are implemented
     # "langgraph": "copilotkit.runtime_py.providers.langgraph:LangGraphProvider",
     # "crewai": "copilotkit.runtime_py.providers.crewai:CrewAIProvider",
@@ -101,12 +101,12 @@ def load_provider_class(provider_name: str) -> type[AgentProvider]:
 
         module = importlib.import_module(module_path)
         provider_class = getattr(module, class_name)
-        return provider_class
+        return provider_class  # type: ignore[no-any-return]
     except (ImportError, AttributeError) as e:
-        raise ImportError(f"Failed to import provider '{provider_name}': {e}")
+        raise ImportError(f"Failed to import provider '{provider_name}': {e}") from e
 
 
-def create_provider(provider_name: str, **kwargs) -> AgentProvider:
+def create_provider(provider_name: str, **kwargs: Any) -> AgentProvider:
     """
     Create a provider instance by name.
 

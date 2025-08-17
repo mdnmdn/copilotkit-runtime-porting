@@ -10,8 +10,7 @@ the CopilotKit runtime.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from copilotkit.runtime_py.core.types import (
     AgentDescriptor,
@@ -20,6 +19,9 @@ from copilotkit.runtime_py.core.types import (
     RuntimeContext,
     RuntimeEvent,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 class AgentProvider(ABC):
@@ -149,7 +151,7 @@ class AgentProvider(ABC):
         """
         return None
 
-    async def save_state(
+    async def save_state(  # noqa: B027
         self,
         thread_id: str,
         agent_name: str,
@@ -203,7 +205,7 @@ class AgentProvider(ABC):
         """
         return True
 
-    async def initialize(self) -> None:
+    async def initialize(self) -> None:  # noqa: B027
         """
         Initialize the provider.
 
@@ -213,7 +215,7 @@ class AgentProvider(ABC):
         """
         pass
 
-    async def cleanup(self) -> None:
+    async def cleanup(self) -> None:  # noqa: B027
         """
         Clean up provider resources.
 

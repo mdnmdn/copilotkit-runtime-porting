@@ -8,12 +8,12 @@ and authentication preparation.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 import traceback
 import uuid
-from typing import Any, Callable
+from datetime import datetime
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -21,7 +21,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from copilotkit.runtime_py.core.types import RuntimeConfig
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from copilotkit.runtime_py.core.types import RuntimeConfig
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -64,7 +67,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "client_ip": client_ip,
                 "user_agent": user_agent,
                 "event": "request_start",
-            }
+            },
         )
 
         # Process request
@@ -85,17 +88,24 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "error_type": type(e).__name__,
                     "event": "request_error",
                 },
-                exc_info=True
+                exc_info=True,
             )
-            # Create error response
+            # Create error response with JSON-safe content
+            error_message = "An unexpected error occurred"
+            if self.config.debug:
+                try:
+                    error_message = str(e)
+                except Exception:
+                    error_message = "Error occurred but couldn't be serialized"
+
             response = JSONResponse(
                 status_code=500,
                 content={
                     "error": "Internal server error",
-                    "message": str(e) if self.config.debug else "An unexpected error occurred",
-                    "request_id": request_id,
-                    "type": "INTERNAL_ERROR",
-                }
+                    "message": error_message,
+                    "request_id": str(request.state.request_id),
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
             )
 
         # Calculate request duration
@@ -120,7 +130,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "user_agent": user_agent,
                 "event": "request_complete",
                 "error": str(error) if error else None,
-            }
+            },
         )
 
         return response
@@ -184,7 +194,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
                     "traceback": traceback.format_exc() if self.config.debug else None,
                     "event": "unhandled_exception",
                 },
-                exc_info=True
+                exc_info=True,
             )
 
             # Create consistent error response
@@ -199,10 +209,7 @@ class ErrorHandlingMiddleware(BaseHTTPMiddleware):
             if self.config.debug:
                 error_detail["traceback"] = traceback.format_exc()
 
-            return JSONResponse(
-                status_code=500,
-                content=error_detail
-            )
+            return JSONResponse(status_code=500, content=error_detail)
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -323,7 +330,7 @@ def setup_error_handling_middleware(app: FastAPI, config: RuntimeConfig) -> None
                 "path": request.url.path,
                 "validation_errors": exc.errors(),
                 "event": "validation_error",
-            }
+            },
         )
 
         return JSONResponse(
@@ -334,7 +341,7 @@ def setup_error_handling_middleware(app: FastAPI, config: RuntimeConfig) -> None
                 "request_id": request_id,
                 "type": "VALIDATION_ERROR",
                 "details": exc.errors(),
-            }
+            },
         )
 
     @app.exception_handler(HTTPException)
@@ -351,7 +358,7 @@ def setup_error_handling_middleware(app: FastAPI, config: RuntimeConfig) -> None
                 "status_code": exc.status_code,
                 "detail": exc.detail,
                 "event": "http_exception",
-            }
+            },
         )
 
         return JSONResponse(
@@ -361,7 +368,7 @@ def setup_error_handling_middleware(app: FastAPI, config: RuntimeConfig) -> None
                 "message": exc.detail,
                 "request_id": request_id,
                 "type": "HTTP_ERROR",
-            }
+            },
         )
 
     logger.info("Error handling middleware configured")
@@ -416,7 +423,7 @@ def setup_all_middleware(app: FastAPI, config: RuntimeConfig) -> None:
         "Request Logging (innermost)",
         "Authentication",
         "Error Handling",
-        "CORS (outermost)"
+        "CORS (outermost)",
     ]
 
     logger.debug(f"Middleware execution order: {' -> '.join(middleware_order)}")

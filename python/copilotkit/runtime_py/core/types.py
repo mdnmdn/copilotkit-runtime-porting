@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import datetime
 from enum import Enum
-from typing import Any, Union
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -115,7 +115,7 @@ class AgentStateMessage(BaseMessage):
 
 
 # Union type for all message types
-Message = Union[TextMessage, ActionMessage, AgentStateMessage]
+Message = TextMessage | ActionMessage | AgentStateMessage
 
 
 class MetaEvent(BaseModel):
@@ -212,18 +212,30 @@ class RuntimeConfig(BaseModel):
 
     # GraphQL configuration
     graphql_playground_enabled: bool = Field(default=True, description="Enable GraphQL Playground")
-    graphql_introspection_enabled: bool = Field(default=True, description="Enable GraphQL introspection")
+    graphql_introspection_enabled: bool = Field(
+        default=True, description="Enable GraphQL introspection"
+    )
     graphql_debug: bool = Field(default=False, description="Enable GraphQL debug mode")
 
     # Middleware configuration
-    middleware_stack_enabled: bool = Field(default=True, description="Enable comprehensive middleware stack")
-    error_reporting_enabled: bool = Field(default=True, description="Enable detailed error reporting")
-    request_logging_enabled: bool = Field(default=True, description="Enable request logging middleware")
-    auth_middleware_enabled: bool = Field(default=False, description="Enable authentication middleware")
+    middleware_stack_enabled: bool = Field(
+        default=True, description="Enable comprehensive middleware stack"
+    )
+    error_reporting_enabled: bool = Field(
+        default=True, description="Enable detailed error reporting"
+    )
+    request_logging_enabled: bool = Field(
+        default=True, description="Enable request logging middleware"
+    )
+    auth_middleware_enabled: bool = Field(
+        default=False, description="Enable authentication middleware"
+    )
 
     # Development/Debug settings
     debug: bool = Field(default=False, description="Enable debug mode with detailed error messages")
-    log_level: str = Field(default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
+    log_level: str = Field(
+        default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)"
+    )
 
     class Config:
         """Pydantic configuration."""
@@ -269,5 +281,5 @@ class CopilotErrorCode:
 
 
 # Type aliases for convenience
-MessageUnion = Union[TextMessage, ActionMessage, AgentStateMessage]
-EventData = Union[Message, MetaEvent, AgentState]
+MessageUnion = TextMessage | ActionMessage | AgentStateMessage
+EventData = Message | MetaEvent | AgentState

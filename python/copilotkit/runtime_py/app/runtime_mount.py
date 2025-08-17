@@ -9,15 +9,17 @@ middleware integration, and development tooling.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse
-from strawberry.fastapi import GraphQLRouter, BaseContext
-from strawberry.types import ExecutionContext, Info
+from strawberry.fastapi import BaseContext, GraphQLRouter
 
-from copilotkit.runtime_py.core.runtime import CopilotRuntime
 from copilotkit.runtime_py.graphql.schema import schema
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI, Request, Response
+
+    from copilotkit.runtime_py.core.runtime import CopilotRuntime
 
 
 class GraphQLContext(BaseContext):
@@ -80,7 +82,7 @@ class GraphQLContext(BaseContext):
                 "user_agent": self.get_user_agent(),
                 "request_id": self.request_id,
                 "user_id": self.user_id,
-            }
+            },
         )
 
 
@@ -138,6 +140,7 @@ def create_graphql_router(
 
     # Add custom GraphQL playground if needed
     if include_playground:
+
         @graphql_router.get("/playground", response_class=HTMLResponse)
         async def graphql_playground() -> str:
             """Custom GraphQL Playground endpoint."""
@@ -324,12 +327,14 @@ def mount_graphql_to_fastapi(
 
     # Add GraphQL health check endpoints if enabled
     if include_health_checks:
+
         @app.get(f"{path}/health")
         async def graphql_health() -> dict[str, Any]:
             """Health check specific to GraphQL functionality."""
             try:
                 # Test GraphQL schema compilation
                 from copilotkit.runtime_py.graphql.schema import get_schema_sdl
+
                 schema_sdl = get_schema_sdl()
 
                 # Test runtime agent discovery
@@ -357,19 +362,13 @@ def mount_graphql_to_fastapi(
             """Get the GraphQL schema SDL."""
             try:
                 from copilotkit.runtime_py.graphql.schema import get_schema_sdl
-                return {
-                    "schema": get_schema_sdl(),
-                    "format": "SDL"
-                }
+
+                return {"schema": get_schema_sdl(), "format": "SDL"}
             except Exception as e:
                 logger.error(f"Error getting GraphQL schema: {e}")
-                return {
-                    "error": str(e),
-                    "schema": "",
-                    "format": "error"
-                }
+                return {"error": str(e), "schema": "", "format": "error"}
 
-    logger.info(f"GraphQL endpoints mounted successfully:")
+    logger.info("GraphQL endpoints mounted successfully:")
     logger.info(f"  - GraphQL endpoint: {path}")
     if include_playground:
         logger.info(f"  - GraphQL Playground: {path}/playground")
@@ -410,7 +409,7 @@ def setup_graphql_middleware(app: FastAPI, runtime: CopilotRuntime) -> None:
                     "method": request.method,
                     "path": request.url.path,
                     "query_params": dict(request.query_params),
-                }
+                },
             )
 
         # Process request
