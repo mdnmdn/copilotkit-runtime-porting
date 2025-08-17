@@ -9,6 +9,7 @@ all types, enums, queries, and mutations required for frontend integration.
 from __future__ import annotations
 
 import datetime
+import logging
 from enum import Enum
 from typing import Any
 
@@ -196,7 +197,8 @@ class GraphQLContext:
     """GraphQL execution context."""
 
     request: Any
-    runtime: Any  # Will be typed properly in later phases
+    runtime: Any
+    logger: logging.Logger = strawberry.field(default_factory=lambda: logging.getLogger(__name__))
 
 
 # Query Resolvers
@@ -217,9 +219,36 @@ class Query:
         Returns:
             AgentsResponse containing list of available agents.
         """
-        # TODO: In Phase 1, this will integrate with the actual runtime
-        # For now, return empty response to satisfy schema
-        return AgentsResponse(agents=[])
+        logger = logging.getLogger(f"{__name__}.available_agents")
+
+        try:
+            # Get runtime from GraphQL context
+            runtime = info.context.runtime
+
+            # Log the operation
+            info.context.log_operation("available_agents", "query")
+
+            # Discover agents from registered providers
+            agent_descriptors = await runtime.discover_agents()
+
+            # Convert to GraphQL Agent types
+            agents = [
+                Agent(
+                    name=agent.name,
+                    description=agent.description,
+                    version=agent.version,
+                    capabilities=agent.capabilities
+                )
+                for agent in agent_descriptors
+            ]
+
+            logger.debug(f"Retrieved {len(agents)} available agents")
+            return AgentsResponse(agents=agents)
+
+        except Exception as e:
+            logger.error(f"Error retrieving available agents: {e}")
+            # Return empty response rather than failing the query
+            return AgentsResponse(agents=[])
 
     @strawberry.field
     async def runtime_info(self, info: Info[GraphQLContext, Any]) -> RuntimeInfo:
@@ -229,8 +258,35 @@ class Query:
         Returns:
             RuntimeInfo with current runtime state.
         """
-        # TODO: In Phase 1, integrate with actual runtime
-        return RuntimeInfo(version="0.1.0", providers=[], agents_count=0)
+        logger = logging.getLogger(f"{__name__}.runtime_info")
+
+        try:
+            # Get runtime from GraphQL context
+            runtime = info.context.runtime
+
+            # Log the operation
+            info.context.log_operation("runtime_info", "query")
+
+            # Get live runtime information
+            providers = runtime.list_providers()
+            agents = await runtime.discover_agents()
+
+            logger.debug(f"Runtime info: {len(providers)} providers, {len(agents)} agents")
+
+            return RuntimeInfo(
+                version="0.1.0",
+                providers=providers,
+                agents_count=len(agents)
+            )
+
+        except Exception as e:
+            logger.error(f"Error retrieving runtime info: {e}")
+            # Return default values rather than failing the query
+            return RuntimeInfo(
+                version="0.1.0",
+                providers=[],
+                agents_count=0
+            )
 
 
 # Mutation Resolvers
@@ -258,15 +314,48 @@ class Mutation:
         Returns:
             CopilotResponse with generated messages and status
         """
-        # TODO: In Phase 2, this will implement full agent execution
-        # For now, return basic response to satisfy schema
+        logger = logging.getLogger(f"{__name__}.generate_copilot_response")
 
-        return CopilotResponse(
-            thread_id=data.agent_session.thread_id,
-            messages=[],
-            status=ResponseStatus.SUCCESS,
-            error_message=None,
-        )
+        try:
+            # Get runtime from GraphQL context
+            runtime = info.context.runtime
+
+            # Log the operation
+            info.context.log_operation("generate_copilot_response", "mutation")
+
+            logger.info(
+                f"Generating response for thread: {data.agent_session.thread_id}, "
+                f"agent: {data.agent_session.agent_name}, "
+                f"messages: {len(data.messages)}"
+            )
+
+            # TODO: In Phase 2, this will implement full agent execution
+            # For now, return a basic acknowledgment response
+
+            # Create a simple acknowledgment message
+            response_message = Message(
+                id=f"msg_{datetime.datetime.utcnow().timestamp()}",
+                role=MessageRole.ASSISTANT,
+                content="Message received. Full agent execution will be implemented in Phase 2.",
+                status=MessageStatus.COMPLETED,
+                created_at=datetime.datetime.utcnow()
+            )
+
+            return CopilotResponse(
+                thread_id=data.agent_session.thread_id,
+                messages=[response_message],
+                status=ResponseStatus.SUCCESS,
+                error_message=None,
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating copilot response: {e}")
+            return CopilotResponse(
+                thread_id=data.agent_session.thread_id,
+                messages=[],
+                status=ResponseStatus.ERROR,
+                error_message=str(e),
+            )
 
 
 # Create the GraphQL Schema

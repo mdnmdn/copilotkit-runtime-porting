@@ -10,3 +10,4 @@ wheels/
 .venv
 .env
 .idea/
+coverage.xml

@@ -452,6 +452,34 @@ python/copilotkit/runtime_py/
 - at the end of each phase, update the `_docs/porting-implementation.md` in order to have a comphrensive documentation of the actual situation, use it a reference at the start of each new phase
 - when starting a potential long running process use `timeout XX ...` in order to not be stuck
 - be pragmatic and simple 'simplicity is the ultimate perfection'
+- when working to a phase update this document marking as in progress, when completed mark as completed
+- at the end of each phase run all the tests and format / lint
+
+### Development Scripts
+
+All development tasks are available through `scripts.py`:
+
+```bash
+# Development server
+uv run python scripts.py dev              # Start with auto-reload
+uv run python scripts.py start            # Production server
+
+# Testing
+uv run python scripts.py test             # Run all tests
+uv run python scripts.py test-unit        # Unit tests only
+uv run python scripts.py test-cov         # Tests with coverage
+
+# Code quality
+uv run python scripts.py lint             # Run linting
+uv run python scripts.py lint-fix         # Auto-fix issues
+uv run python scripts.py format           # Format with black
+uv run python scripts.py check            # All quality checks
+
+# Utilities
+uv run python scripts.py clean            # Clean cache files
+uv run python scripts.py schema           # Show GraphQL schema
+uv run python scripts.py info             # Runtime information
+```
 
 ---
 

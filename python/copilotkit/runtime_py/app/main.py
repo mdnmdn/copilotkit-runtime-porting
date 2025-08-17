@@ -43,7 +43,7 @@ def setup_logging() -> None:
 
 
 # Global runtime instance
-runtime: CopilotRuntime
+runtime: CopilotRuntime | None = None
 
 
 @asynccontextmanager
@@ -62,18 +62,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting CopilotKit Python Runtime...")
 
     try:
-        # Load configuration from environment
-        config = RuntimeConfig()
-
-        # Create runtime instance
-        runtime = CopilotRuntime(config=config)
+        # Runtime should already be created and mounted during app creation
+        if runtime is None:
+            logger.error("Runtime not initialized during app creation")
+            raise RuntimeError("Runtime not initialized during app creation")
 
         # Start the runtime
         await runtime.start()
 
-        logger.info(f"Runtime started successfully on {config.host}:{config.port}")
-        logger.info(f"GraphQL endpoint will be available at: {config.graphql_path}")
-        logger.info(f"Health check available at: {config.graphql_path}/health")
+        logger.info("Runtime started successfully")
+        logger.info("GraphQL endpoint available at: /api/copilotkit/graphql")
+        logger.info("GraphQL Playground available at: /api/copilotkit/graphql/playground")
+        logger.info("Health check available at: /api/copilotkit/health")
 
         yield
 
@@ -100,10 +100,18 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI application instance.
     """
+    global runtime
+
     # Setup logging first
     setup_logging()
 
     logger = logging.getLogger(__name__)
+
+    # Load configuration from environment
+    config = RuntimeConfig()
+
+    # Create runtime instance
+    runtime = CopilotRuntime(config=config)
 
     # Create FastAPI app with lifespan management
     app = FastAPI(
@@ -120,6 +128,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Mount the runtime to the app (this must happen BEFORE startup)
+    runtime.mount_to_fastapi(app, path="/api/copilotkit", include_graphql_playground=True)
+    logger.info("Runtime mounted to FastAPI application")
+
     # Add global exception handler
     @app.exception_handler(Exception)
     async def global_exception_handler(request, exc):
@@ -134,15 +146,6 @@ def create_app() -> FastAPI:
             },
         )
 
-    # Add middleware for request logging
-    @app.middleware("http")
-    async def log_requests(request, call_next):
-        """Log all HTTP requests."""
-        logger.debug(f"Request: {request.method} {request.url}")
-        response = await call_next(request)
-        logger.debug(f"Response: {response.status_code}")
-        return response
-
     # Add root endpoint
     @app.get("/")
     async def root():
@@ -154,6 +157,8 @@ def create_app() -> FastAPI:
             "docs_url": "/docs",
             "health_check": "/api/copilotkit/health",
             "runtime_info": "/api/copilotkit/info",
+            "graphql_endpoint": "/api/copilotkit/graphql",
+            "graphql_playground": "/api/copilotkit/graphql/playground",
         }
 
     logger.info("FastAPI application created successfully")
@@ -164,36 +169,18 @@ def mount_runtime_to_app(app: FastAPI) -> None:
     """
     Mount the CopilotRuntime to the FastAPI application.
 
-    This is called after the app is created and the runtime is initialized
-    in the lifespan context.
+    Note: This function is deprecated and kept for compatibility.
+    Runtime mounting is now handled during app creation.
 
     Args:
         app: The FastAPI application to mount to.
     """
-    global runtime
-
     logger = logging.getLogger(__name__)
-
-    try:
-        # Mount the runtime with GraphQL endpoints
-        runtime.mount_to_fastapi(app, path="/api/copilotkit", include_graphql_playground=True)
-
-        logger.info("CopilotRuntime mounted to FastAPI application")
-
-    except Exception as e:
-        logger.error(f"Failed to mount runtime: {e}")
-        raise
+    logger.info("Runtime mounting is now handled during app creation")
 
 
 # Create the FastAPI application
 app = create_app()
-
-
-# Mount the runtime after app startup (this will be done in the lifespan handler)
-@app.on_event("startup")
-async def mount_runtime():
-    """Mount runtime after startup."""
-    mount_runtime_to_app(app)
 
 
 # Development server entry point

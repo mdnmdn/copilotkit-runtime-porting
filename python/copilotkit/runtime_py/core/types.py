@@ -210,6 +210,21 @@ class RuntimeConfig(BaseModel):
     max_concurrent_requests: int = Field(default=100, description="Maximum concurrent requests")
     request_timeout_seconds: int = Field(default=300, description="Request timeout in seconds")
 
+    # GraphQL configuration
+    graphql_playground_enabled: bool = Field(default=True, description="Enable GraphQL Playground")
+    graphql_introspection_enabled: bool = Field(default=True, description="Enable GraphQL introspection")
+    graphql_debug: bool = Field(default=False, description="Enable GraphQL debug mode")
+
+    # Middleware configuration
+    middleware_stack_enabled: bool = Field(default=True, description="Enable comprehensive middleware stack")
+    error_reporting_enabled: bool = Field(default=True, description="Enable detailed error reporting")
+    request_logging_enabled: bool = Field(default=True, description="Enable request logging middleware")
+    auth_middleware_enabled: bool = Field(default=False, description="Enable authentication middleware")
+
+    # Development/Debug settings
+    debug: bool = Field(default=False, description="Enable debug mode with detailed error messages")
+    log_level: str = Field(default="INFO", description="Logging level (DEBUG, INFO, WARNING, ERROR)")
+
     class Config:
         """Pydantic configuration."""
 

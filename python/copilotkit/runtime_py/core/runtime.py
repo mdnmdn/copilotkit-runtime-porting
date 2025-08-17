@@ -12,7 +12,6 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 
 from copilotkit.runtime_py.core.provider import AgentProvider
 from copilotkit.runtime_py.core.types import (
@@ -219,15 +218,8 @@ class CopilotRuntime:
         self._mounted_app = app
         self._mount_path = path.rstrip("/")
 
-        # Configure CORS if needed
-        if self.config.cors_origins:
-            app.add_middleware(
-                CORSMiddleware,
-                allow_origins=self.config.cors_origins,
-                allow_credentials=True,
-                allow_methods=["*"],
-                allow_headers=["*"],
-            )
+        # Setup comprehensive middleware stack
+        self._setup_middleware_stack(app)
 
         # Add health check endpoint
         @app.get(f"{self._mount_path}/health")
@@ -268,14 +260,73 @@ class CopilotRuntime:
                 self.logger.error(f"Error getting runtime info: {e}")
                 raise HTTPException(status_code=500, detail="Internal server error")
 
-        # TODO: In later phases, add GraphQL endpoint mounting here
-        # This will include:
-        # - GraphQL schema setup with Strawberry
-        # - Resolvers for queries and mutations
-        # - Streaming/SSE support
-        # - Authentication/authorization
+        # Mount GraphQL endpoints
+        self._mount_graphql_endpoints(app, f"{self._mount_path}/graphql", include_graphql_playground)
 
         self.logger.info(f"Runtime mounted to FastAPI app at path: {self._mount_path}")
+        self.logger.info(f"GraphQL endpoint available at: {self._mount_path}/graphql")
+
+    def _setup_middleware_stack(self, app: FastAPI) -> None:
+        """
+        Setup comprehensive middleware stack for the FastAPI application.
+
+        Args:
+            app: FastAPI application to setup middleware for.
+        """
+        # Import here to avoid circular imports
+        from copilotkit.runtime_py.app.middleware import setup_all_middleware
+        from copilotkit.runtime_py.app.runtime_mount import setup_graphql_middleware
+
+        # Setup the comprehensive middleware stack
+        setup_all_middleware(app, self.config)
+
+        # Setup GraphQL-specific middleware
+        setup_graphql_middleware(app, self)
+
+        self.logger.info("Comprehensive middleware stack setup completed")
+
+    def _mount_graphql_endpoints(
+        self,
+        app: FastAPI,
+        graphql_path: str,
+        include_playground: bool
+    ) -> None:
+        """
+        Mount GraphQL endpoints to the FastAPI application.
+
+        Args:
+            app: FastAPI application to mount to
+            graphql_path: Path for GraphQL endpoint
+            include_playground: Whether to include GraphQL playground
+        """
+        # Import here to avoid circular imports
+        from copilotkit.runtime_py.app.runtime_mount import mount_graphql_to_fastapi
+
+        mount_graphql_to_fastapi(
+            app=app,
+            runtime=self,
+            path=graphql_path,
+            include_playground=include_playground,
+            include_health_checks=True,
+        )
+        self.logger.info(f"GraphQL endpoints mounted at: {graphql_path}")
+
+    def get_graphql_context(self) -> dict[str, Any]:
+        """
+        Get context data for GraphQL execution.
+
+        This method provides context data that will be available to all
+        GraphQL resolvers via the info.context parameter.
+
+        Returns:
+            Dictionary containing context data for GraphQL execution.
+        """
+        return {
+            "runtime": self,
+            "providers": self._providers,
+            "config": self.config,
+            "logger": self.logger,
+        }
 
     def create_fastapi_app(self) -> FastAPI:
         """
