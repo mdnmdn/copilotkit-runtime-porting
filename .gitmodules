@@ -1,0 +1,3 @@
+[submodule "externals/copilotkit"]
+	path = externals/copilotkit
+	url = https://github.com/CopilotKit/CopilotKit
