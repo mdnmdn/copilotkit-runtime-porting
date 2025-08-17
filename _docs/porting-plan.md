@@ -5,9 +5,10 @@ This plan delivers a Python port of CopilotRuntime that exposes a GraphQL endpoi
 
 ### Architecture Requirements
 - **GraphQL Contract Parity**: Must implement identical schema, types, unions, and operations as TypeScript runtime
+- **FastAPI Integration**: Runtime designed as pluggable component for existing FastAPI instances
 - **Endpoint Compatibility**: Mount at `/api/copilotkit` with identical request/response patterns
 - **Streaming Support**: Target GraphQL over SSE (Server-Sent Events) for incremental delivery
-- **Provider Architecture**: Pluggable provider layer starting with LangGraph, followed by CrewAI
+- **Connector Reuse**: Leverage existing `CopilotKitRemoteEndpoint` from Python SDK instead of implementing custom connectors
 - **State Management**: Persistent state store with pluggable backends (in-memory → Redis/Postgres)
 - **Package Management**: Use `uv` for Python environment and dependency management
 
@@ -34,9 +35,10 @@ This plan delivers a Python port of CopilotRuntime that exposes a GraphQL endpoi
 
 ### Python Package Structure
 ```
-sdk-python/copilotkit/runtime_py/
+python/copilotkit/runtime_py/
   app/
-    main.py                 # FastAPI application bootstrap
+    main.py                 # Standalone FastAPI server example
+    runtime_mount.py        # FastAPI pluggable runtime mounting
     settings.py             # Configuration (port, paths, logging, providers)
     middleware.py           # CORS, authentication, request context
   graphql/
@@ -47,22 +49,15 @@ sdk-python/copilotkit/runtime_py/
     context.py              # Request context with properties, headers, logger
     streaming.py            # SSE and incremental delivery implementation
   core/
-    runtime.py              # CopilotRuntime orchestration class
+    runtime.py              # CopilotRuntime orchestration class (main entry point)
     conversion.py           # GraphQL ↔ internal message conversion
     events.py               # RuntimeEvent definitions and meta-events
     state_store.py          # State persistence interface and in-memory implementation
     errors.py               # Error normalization and CopilotKit status codes
     lifecycle.py            # threadId/runId management and cleanup
-  providers/
-    base.py                 # Abstract provider interface
-    registry.py             # Agent discovery and provider management
-    langgraph/
-      provider.py           # LangGraphProvider implementation
-      adapters.py           # LangGraph event → RuntimeEvent translation
-      state_bridge.py       # Graph state persistence integration
-    crewai/                 # Future: CrewAI provider implementation
-      provider.py
-      adapters.py
+  connectors/
+    copilotkit_remote.py    # Bridge to CopilotKitRemoteEndpoint
+    agent_registry.py       # Agent discovery through existing connectors
   storage/
     interface.py            # Storage backend interface
     memory.py               # In-memory implementation
@@ -72,163 +67,179 @@ sdk-python/copilotkit/runtime_py/
 
 ---
 
-## Phase 0 — Bootstrap and Alignment
-**Goal**: Establish foundations and ensure contract compatibility.
+## Phase 0 — Bootstrap and Core Runtime Class
+**Goal**: Establish foundations, create pluggable runtime class, and ensure contract compatibility.
 
 **Technical Requirements:**
-- Extract complete GraphQL schema from TypeScript runtime (`packages/runtime/src/graphql/`)
-- Analyze client contract from `packages/runtime-client-gql/src/graphql/definitions/`
+- Extract complete GraphQL schema from TypeScript runtime (`externals/copilotkit/CopilotKit/packages/runtime/src/graphql/`)
+- Analyze client contract from `externals/copilotkit/CopilotKit/packages/runtime-client-gql/src/graphql/definitions/`
 - Choose GraphQL library: **Strawberry GraphQL** (preferred) for Python 3.8+ compatibility
+- Create pluggable runtime class for FastAPI integration
 - Establish streaming strategy: **GraphQL over SSE** with multipart responses
 
 **Tasks:**
 - Create frozen snapshot of TS GraphQL schema (types, unions, enums, operations)
-- Set up Python package structure under `sdk-python/copilotkit/runtime_py/`
+- Set up Python package structure under `python/copilotkit/runtime_py/`
 - Configure `uv` toolchain: ruff, black, mypy, pytest
-- Install core dependencies: uvicorn, fastapi, strawberry-graphql, sse-starlette, httpx
-- Create basic FastAPI app with GraphQL endpoint mounting
+- Install core dependencies: uvicorn, fastapi, strawberry-graphql, sse-starlette, httpx, copilotkit
+- Create `CopilotRuntime` class in `core/runtime.py` as main orchestrator
+- Design runtime as pluggable FastAPI component with mount functionality
+- Create standalone FastAPI server example in `app/main.py` for testing
 - Set up development workflow documentation
 
 **Deliverables:**
 - Complete package scaffolding with `pyproject.toml` and `uv.lock`
-- FastAPI app serving GraphQL playground at `/api/copilotkit/graphql`
+- Working `CopilotRuntime` class with basic initialization
+- Pluggable FastAPI mounting mechanism in `app/runtime_mount.py`
+- Standalone test server in `app/main.py`
 - Development scripts: `uv run dev`, `uv run test`, `uv run lint`
 
 **Acceptance Criteria:**
-- `uvicorn copilotkit.runtime_py.app.main:app --reload` starts successfully
-- GraphQL playground accessible and loads schema
+- `uvicorn python.copilotkit.runtime_py.app.main:app --reload` starts successfully
+- Runtime can be mounted on existing FastAPI instances
+- GraphQL playground accessible and loads basic schema
 - All linting and type checking passes
 
 ---
 
-## Phase 1 — GraphQL Schema Implementation (Non-Streaming MVP)
-**Goal**: Implement complete schema with static/stubbed resolvers.
+## Phase 1 — CopilotRuntime Class and FastAPI Integration
+**Goal**: Create core runtime class and establish FastAPI mounting patterns.
 
 **Technical Requirements:**
-- Implement all GraphQL types exactly matching TypeScript schema
-- All resolvers must return valid response shapes (even if stubbed)
-- Request context must capture properties, headers, correlation IDs
-- Error handling must return GraphQL-compatible error responses
-
-**Tasks:**
-- Define complete type system in `graphql/types.py`:
-  - Input types: `GenerateCopilotResponseInput`, `LoadAgentStateInput`
-  - Response types: `CopilotResponse`, `AgentsResponse`, `LoadAgentStateResponse`
-  - Message union: `TextMessage | ImageMessage | ActionExecutionMessage | ResultMessage | AgentStateMessage`
-  - Meta-event union: `LangGraphInterruptEvent | CopilotKitLangGraphInterruptEvent`
-  - Enums: message status, roles, event types
-- Implement stubbed resolvers in `graphql/resolvers.py`:
-  - `hello()` → diagnostic string with version/status
-  - `availableAgents()` → static list of mock agents
-  - `loadAgentState()` → empty state response
-  - `generateCopilotResponse()` → single TextMessage response
-- Create request context system with properties forwarding
-- Add conversion utilities between GraphQL and internal types
-- Implement basic error normalization
-
-**Deliverables:**
-- Complete GraphQL schema with all types and resolvers
-- Working endpoint returning valid responses for all operations
-- Unit tests for type conversion and basic resolver logic
-
-**Acceptance Criteria:**
-- Frontend client can execute all queries/mutations without GraphQL errors
-- `generateCopilotResponse` returns valid `CopilotResponse` with at least one message
-- Request context properly captures and forwards client properties
-
----
-
-## Phase 2 — Runtime Core and State Management
-**Goal**: Implement `CopilotRuntime` orchestrator and state persistence.
-
-**Technical Requirements:**
-- `CopilotRuntime` must manage complete request lifecycle
-- State store must support thread-scoped and agent-scoped persistence
-- Error handling must map to CopilotKit status codes and user-friendly messages
-- Thread/run ID generation and validation must be robust
+- `CopilotRuntime` class must be the main entry point for all operations
+- Runtime must be pluggable into existing FastAPI applications
+- FastAPI mounting must preserve all GraphQL contract requirements
+- Runtime must support configuration injection and lifecycle management
 
 **Tasks:**
 - Implement `CopilotRuntime` class in `core/runtime.py`:
-  - Thread ID and run ID lifecycle management
-  - Request orchestration and provider coordination
-  - State loading/saving coordination
-  - Error boundary and cleanup handling
+  - Constructor accepting `RuntimeSettings` configuration
+  - Methods for connector registration and management
+  - GraphQL schema building and resolver binding
+  - Request lifecycle and context management
+- Create FastAPI integration in `app/runtime_mount.py`:
+  - `mount_to_fastapi(app: FastAPI, path: str)` method
+  - Proper middleware integration for CORS, auth, logging
+  - GraphQL endpoint setup with Strawberry integration
+  - SSE endpoint preparation for streaming
+- Implement basic GraphQL schema in `graphql/schema.py`:
+  - All required types matching TypeScript schema
+  - Stubbed resolvers returning valid response shapes
+  - Request context integration with FastAPI
+- Create standalone test server in `app/main.py`:
+  - FastAPI application instance
+  - Runtime mounting and configuration
+  - Development server setup with hot reload
+
+**Deliverables:**
+- Working `CopilotRuntime` class with pluggable architecture
+- FastAPI mounting mechanism with proper integration
+- Standalone test server for development and validation
+- Basic GraphQL schema with stubbed but valid responses
+
+**Acceptance Criteria:**
+- `CopilotRuntime` can be instantiated with configuration
+- Runtime mounts successfully to existing FastAPI apps
+- Standalone server starts and serves GraphQL playground
+- All GraphQL operations return valid response shapes
+
+---
+
+## Phase 2 — Complete GraphQL Schema and Request Orchestration
+**Goal**: Implement full GraphQL contract with proper request orchestration through runtime.
+
+**Technical Requirements:**
+- Complete GraphQL schema exactly matching TypeScript runtime
+- All resolvers must delegate to `CopilotRuntime` for orchestration
+- Request context must capture and forward all client properties
+- State store must support thread-scoped and agent-scoped persistence
+
+**Tasks:**
+- Complete GraphQL type system implementation:
+  - All input types: `GenerateCopilotResponseInput`, `LoadAgentStateInput`
+  - All response types: `CopilotResponse`, `AgentsResponse`, `LoadAgentStateResponse`
+  - Complete message union: `TextMessage | ImageMessage | ActionExecutionMessage | ResultMessage | AgentStateMessage`
+  - Meta-event union: `LangGraphInterruptEvent | CopilotKitLangGraphInterruptEvent`
+  - All enums: message status, roles, event types
+- Implement resolver orchestration patterns:
+  - All resolvers delegate to `CopilotRuntime` methods
+  - Request context properly initialized and forwarded
+  - Error handling with proper GraphQL error responses
+  - Thread/run ID generation and validation
+- Enhance `CopilotRuntime` orchestration capabilities:
+  - Complete request lifecycle management
+  - Connector coordination and event aggregation
+  - State persistence through pluggable store interface
+  - Error normalization and logging integration
 - Create state store interface and in-memory implementation:
   - Key structure: `{threadId, agentName}` → agent state
   - Atomic operations for concurrent access
   - State serialization/deserialization
-- Implement error normalization system:
-  - Map provider errors to CopilotKit error codes
-  - Sanitize error messages (no secret leakage)
-  - Structured logging with correlation IDs
-- Add abort/cancellation support (stubs for streaming)
 
 **Deliverables:**
-- Working `CopilotRuntime` with complete lifecycle management
-- In-memory state store with persistence interface
-- Comprehensive error handling and normalization
-- Unit tests covering runtime orchestration and state operations
+- Complete GraphQL schema with all required types and operations
+- Runtime orchestration handling all resolver delegations
+- Working state persistence with pluggable interface
+- Unit tests covering schema, runtime, and state operations
 
 **Acceptance Criteria:**
-- `loadAgentState` returns state persisted during previous `generateCopilotResponse`
-- Error conditions return appropriate GraphQL errors with status codes
-- Concurrent requests maintain proper state isolation
-- Unit tests achieve >85% coverage for core runtime logic
+- All GraphQL operations execute without schema errors
+- `CopilotRuntime` properly orchestrates all requests
+- State persistence works across multiple requests
+- Error handling returns appropriate GraphQL error responses
 
 ---
 
-## Phase 3 — LangGraph Provider Integration
-**Goal**: Bridge GraphQL operations to LangGraph execution with event translation.
+## Phase 3 — CopilotKitRemoteEndpoint Integration
+**Goal**: Bridge GraphQL operations to LangGraph through existing CopilotKit Python SDK connector.
 
 **Technical Requirements:**
-- Provider must support agent discovery from LangGraph registry/definitions
-- Event translation must map all LangGraph events to appropriate message/meta-event types
-- State persistence must integrate with LangGraph's checkpointing system
-- Tool/action execution must bridge through CopilotKit message patterns
+- Leverage existing `CopilotKitRemoteEndpoint` from `copilotkit` Python package
+- Integrate with LangGraph agents using established patterns from `externals/copilotkit/sdk-python/`
+- Event translation must map CopilotKit events to GraphQL message/meta-event types
+- State persistence must work with existing CopilotKit state management
 
 **Tasks:**
-- Implement provider interface in `providers/base.py`:
-  - `list_agents() → List[AgentDescriptor]`
-  - `load_state(thread_id, agent_name) → AgentState`
-  - `execute_run(input, context) → AsyncIterator[RuntimeEvent]`
-- Create `LangGraphProvider` implementation:
-  - Agent registry integration and discovery
-  - Graph execution with thread/run correlation
-  - State checkpointing and restoration
-  - Event stream processing and translation
-- Implement event adapters in `providers/langgraph/adapters.py`:
-  - Node execution → `AgentStateMessage`
-  - Tool calls → `ActionExecutionMessage`
-  - Tool responses → `ResultMessage`
-  - LLM responses → `TextMessage`
-  - Graph interrupts → `LangGraphInterruptEvent`/`CopilotKitLangGraphInterruptEvent`
-- Create demo LangGraph agent for testing:
-  - Simple conversational agent with tool usage
-  - State persistence demonstration
-  - Interrupt handling example
+- Implement connector bridge in `connectors/copilotkit_remote.py`:
+  - Wrap `CopilotKitRemoteEndpoint` for runtime integration
+  - Agent discovery through existing CopilotKit registry patterns
+  - Event stream processing and translation to GraphQL types
+- Create agent registry in `connectors/agent_registry.py`:
+  - Discover agents from CopilotKit remote endpoints
+  - Handle agent metadata and availability
+  - Support for multiple remote endpoints
+- Implement event translation:
+  - CopilotKit events → GraphQL `Message` union types
+  - CopilotKit state events → `AgentStateMessage`
+  - CopilotKit tool calls → `ActionExecutionMessage`/`ResultMessage`
+  - CopilotKit text responses → `TextMessage`
+- Create demo LangGraph agents using standard CopilotKit patterns:
+  - Simple conversational agent with `@copilotkit_runtime_action` decorators
+  - State persistence using existing CopilotKit mechanisms
+  - Tool integration following `externals/copilotkit/sdk-python/` examples
 
 **Deliverables:**
-- Complete LangGraph provider with event translation
-- Working agent discovery returning real LangGraph agents
-- End-to-end execution path from GraphQL mutation to LangGraph run
-- Demo agent and integration tests
+- CopilotKitRemoteEndpoint integration bridge
+- Working agent discovery through existing connector
+- End-to-end execution path from GraphQL mutation to CopilotKit remote endpoint
+- Demo agents following established CopilotKit patterns
 
 **Acceptance Criteria:**
-- `availableAgents` returns agents discovered from LangGraph registry
-- `generateCopilotResponse` executes LangGraph run and returns translated events
-- `loadAgentState` reflects updated graph state after execution
-- Integration test demonstrates full conversation flow with state persistence
+- `availableAgents` returns agents discovered from CopilotKitRemoteEndpoint
+- `generateCopilotResponse` executes agents through existing connector
+- `loadAgentState` reflects state managed by CopilotKit SDK
+- Integration test demonstrates compatibility with existing CopilotKit agent patterns
 
 ---
 
 ## Phase 4 — Streaming Implementation (SSE/Incremental Delivery)
-**Goal**: Implement real-time streaming of messages and meta-events.
+**Goal**: Implement real-time streaming of messages and meta-events through CopilotKit connector.
 
 **Technical Requirements:**
-- Streaming must deliver events incrementally as they occur during execution
+- Streaming must deliver events incrementally as they occur from CopilotKitRemoteEndpoint
 - SSE implementation must be compatible with GraphQL-over-HTTP spec
-- Abort/cancellation must cleanly terminate streams and provider execution
-- Client compatibility with existing `@copilotkit/runtime-client-gql` patterns
+- Abort/cancellation must cleanly terminate streams and connector execution
+- Event translation from CopilotKit events to GraphQL streaming responses
 
 **Tasks:**
 - Implement GraphQL over SSE in `graphql/streaming.py`:
@@ -236,71 +247,73 @@ sdk-python/copilotkit/runtime_py/
   - Event serialization and chunk boundaries
   - Connection lifecycle and error handling
   - Client disconnection detection
+- Enhance `CopilotKitRemoteConnector` for streaming:
+  - Stream events from `CopilotKitRemoteEndpoint` in real-time
+  - Translate CopilotKit events to GraphQL message/meta-event types
+  - Handle connector-level errors and state changes
+  - Proper cleanup on stream termination
 - Modify `generateCopilotResponse` resolver for streaming:
   - Convert to async generator yielding incremental responses
-  - Proper error handling within stream
+  - Stream events through runtime connector orchestration
   - Graceful stream termination on completion/error
 - Add abort support throughout the stack:
-  - Request cancellation propagation to providers
-  - Clean resource cleanup on abort
+  - Request cancellation propagation to CopilotKit connectors
+  - Clean connector and resource cleanup on abort
   - Stream closure with appropriate status codes
-- Implement streaming-compatible event batching:
-  - Buffer small events to reduce chattiness
-  - Flush on significant events or time intervals
-  - Maintain event ordering guarantees
 
 **Deliverables:**
 - Working SSE-based GraphQL streaming implementation
-- Abort-capable `generateCopilotResponse` with clean cancellation
+- Streaming CopilotKitRemoteConnector with event translation
+- Abort-capable execution with clean connector termination
 - Client compatibility validation with incremental event delivery
 
 **Acceptance Criteria:**
-- Messages and meta-events appear incrementally in UI during execution
-- Abort functionality stops backend execution and closes stream without errors
-- No message loss or ordering issues under normal and error conditions
-- Performance acceptable for typical conversation loads
+- Messages and meta-events appear incrementally from CopilotKit agents
+- Abort functionality stops CopilotKit execution and closes stream
+- Event translation maintains proper message ordering and types
+- Performance acceptable for typical CopilotKit agent interactions
 
 ---
 
 ## Phase 5 — Extensions, Guardrails, and Request Metadata
-**Goal**: Reach feature parity for advanced request handling and safety features.
+**Goal**: Reach feature parity for advanced request handling and safety features with CopilotKit integration.
 
 **Technical Requirements:**
-- Extensions field must support arbitrary metadata in responses
-- Request properties and headers must be properly forwarded to providers
-- Guardrails must implement topic filtering and content validation
-- Telemetry must provide comprehensive observability
+- Extensions field must support arbitrary metadata from CopilotKit responses
+- Request properties and headers must be forwarded to CopilotKitRemoteEndpoint
+- Guardrails must work with existing CopilotKit safety mechanisms
+- Telemetry must provide comprehensive observability across runtime and connectors
 
 **Tasks:**
 - Implement extensions support:
-  - Response metadata collection and serialization
-  - Provider extension contribution interface
+  - Collect metadata from CopilotKitRemoteEndpoint responses
+  - Runtime extension contribution interface
   - Client-side extension consumption compatibility
 - Add forwarded parameters system:
-  - Header extraction and sanitization
-  - Property forwarding to provider context
-  - Secure handling of API keys and credentials
+  - Header extraction and sanitization for CopilotKit context
+  - Property forwarding to CopilotKitRemoteEndpoint
+  - Secure API key handling for CopilotKit agent backends
 - Implement input guardrails:
-  - Topic allow/deny list validation
-  - Content filtering and safety checks
+  - Integration with CopilotKit safety mechanisms
+  - Runtime-level content filtering and validation
   - Rate limiting and request size limits
-  - Configurable guardrail policies
+  - Configurable guardrail policies working with CopilotKit patterns
 - Add comprehensive logging and telemetry:
-  - Structured logging with correlation IDs
-  - Request/response timing and metrics
-  - Error rate tracking and alerting hooks
-  - Optional OpenTelemetry integration
+  - Structured logging with correlation IDs across runtime and connectors
+  - CopilotKit interaction timing and metrics
+  - Connector health monitoring and error tracking
+  - Optional OpenTelemetry integration for distributed tracing
 
 **Deliverables:**
-- Extensions-capable responses with metadata propagation
-- Guardrails implementation with configurable policies
-- Comprehensive telemetry and logging system
+- Extensions-capable responses with CopilotKit metadata propagation
+- Guardrails implementation compatible with CopilotKit safety features
+- Comprehensive telemetry covering runtime and connector interactions
 
 **Acceptance Criteria:**
-- End-to-end tests demonstrate forwarded parameters reaching providers
-- Guardrails effectively filter inappropriate content and topics
-- Telemetry provides sufficient observability for production operation
-- Security review passes for credential handling and data sanitization
+- End-to-end tests demonstrate forwarded parameters reaching CopilotKit agents
+- Guardrails work effectively with CopilotKit content filtering
+- Telemetry provides visibility into both runtime and CopilotKit performance
+- Security review passes for CopilotKit credential and context forwarding
 
 ---
 
@@ -348,39 +361,39 @@ sdk-python/copilotkit/runtime_py/
 
 ---
 
-## Phase 7 — CrewAI Provider Implementation
-**Goal**: Add CrewAI support demonstrating provider architecture flexibility.
+## Phase 7 — CrewAI Connector Implementation
+**Goal**: Add CrewAI support through connector pattern, demonstrating architecture flexibility.
 
 **Technical Requirements:**
-- CrewAI provider must implement identical interface as LangGraph provider
-- Event mapping must handle CrewAI-specific execution patterns
-- State management must integrate with CrewAI's agent persistence
-- Feature parity must be maintained across both providers
+- CrewAI connector must implement identical interface as CopilotKitRemoteConnector
+- Event mapping must handle CrewAI-specific execution patterns through CopilotKit bridge
+- State management must work with CrewAI persistence via CopilotKit patterns
+- Feature parity must be maintained across different connector types
 
 **Tasks:**
-- Implement `CrewAIProvider` in `providers/crewai/`:
-  - Agent discovery from CrewAI crew definitions
-  - Execution orchestration and event streaming
-  - State persistence integration
-  - Tool/action bridging for CrewAI agents
-- Create CrewAI event adapters:
-  - Agent execution events → `AgentStateMessage`
-  - Task completion → `TextMessage`
+- Implement `CrewAIConnector` in `connectors/crewai_connector.py`:
+  - Bridge to CrewAI crews using CopilotKit integration patterns
+  - Agent discovery from CrewAI crew definitions via CopilotKit
+  - Execution orchestration through CopilotKit CrewAI adapter
+  - Event streaming and translation from CrewAI to GraphQL types
+- Create CrewAI event translation:
+  - CrewAI task execution → `AgentStateMessage`
+  - Crew member responses → `TextMessage`
   - Tool usage → `ActionExecutionMessage`/`ResultMessage`
   - Crew collaboration → appropriate meta-events
-- Add CrewAI-specific configuration and setup
-- Create comprehensive test suite for CrewAI provider
+- Add CrewAI-specific connector configuration
+- Create comprehensive test suite for CrewAI connector
 
 **Deliverables:**
-- Complete CrewAI provider with full feature parity
-- Provider-agnostic test suite validating both implementations
-- Documentation and examples for CrewAI integration
+- Complete CrewAI connector with full feature parity
+- Connector-agnostic test suite validating both implementations
+- Documentation and examples for CrewAI integration via CopilotKit
 
 **Acceptance Criteria:**
 - CrewAI agents discoverable and executable via same GraphQL interface
-- All core features work identically between LangGraph and CrewAI providers
-- E2E tests pass for both provider implementations
-- Performance characteristics comparable between providers
+- All core features work identically between CopilotKit and CrewAI connectors
+- E2E tests pass for both connector implementations
+- Performance characteristics comparable between connector types
 
 ---
 
@@ -431,21 +444,28 @@ sdk-python/copilotkit/runtime_py/
 
 ## Technical Specifications
 
-### Provider Interface Contract
+### Runtime Integration Architecture
 ```python
-from abc import ABC, abstractmethod
-from typing import List, AsyncIterator, Optional
-from .events import RuntimeEvent, AgentDescriptor, AgentState
+# Core runtime class - main entry point
+class CopilotRuntime:
+    def __init__(self, settings: RuntimeSettings):
+        self.settings = settings
+        self.connectors: List[CopilotKitConnector] = []
+        self.state_store = self._create_state_store()
+    
+    def add_connector(self, connector: CopilotKitConnector):
+        """Add CopilotKitRemoteEndpoint or other connectors."""
+        self.connectors.append(connector)
+    
+    def mount_to_fastapi(self, app: FastAPI, path: str = "/api/copilotkit"):
+        """Mount runtime GraphQL endpoint to existing FastAPI app."""
+        pass
 
-class AgentProvider(ABC):
+# Connector interface bridging to CopilotKitRemoteEndpoint
+class CopilotKitConnector(ABC):
     @abstractmethod
     async def list_agents(self) -> List[AgentDescriptor]:
-        """Return available agents from this provider."""
-        pass
-    
-    @abstractmethod
-    async def load_state(self, thread_id: str, agent_name: str) -> Optional[AgentState]:
-        """Load persisted state for agent in thread."""
+        """Return available agents from this connector."""
         pass
     
     @abstractmethod
@@ -454,13 +474,70 @@ class AgentProvider(ABC):
         input_data: GenerateCopilotResponseInput,
         context: RequestContext
     ) -> AsyncIterator[RuntimeEvent]:
-        """Execute agent run and yield events."""
+        """Execute agent run through CopilotKit connector."""
         pass
+
+# Bridge to existing CopilotKit Python SDK
+class CopilotKitRemoteConnector(CopilotKitConnector):
+    def __init__(self, remote_endpoint: CopilotKitRemoteEndpoint):
+        self.remote_endpoint = remote_endpoint
     
-    @abstractmethod
-    async def save_state(self, thread_id: str, agent_name: str, state: AgentState) -> None:
-        """Persist agent state for thread."""
+    async def list_agents(self) -> List[AgentDescriptor]:
+        """Discover agents from CopilotKitRemoteEndpoint."""
         pass
+```
+
+### Example Usage Patterns
+
+#### Basic Runtime Setup with CopilotKit Integration
+```python
+from fastapi import FastAPI
+from copilotkit import CopilotKitRemoteEndpoint
+from copilotkit.runtime_py import CopilotRuntime, CopilotKitRemoteConnector
+
+# Create FastAPI app
+app = FastAPI()
+
+# Setup CopilotKit remote endpoint (existing pattern)
+copilotkit_endpoint = CopilotKitRemoteEndpoint()
+# Register your LangGraph agents using existing decorators
+# @copilotkit_endpoint.add_langraph_agent(...)
+
+# Create runtime and add connector
+runtime = CopilotRuntime()
+connector = CopilotKitRemoteConnector(copilotkit_endpoint)
+runtime.add_connector(connector)
+
+# Mount to existing FastAPI app
+runtime.mount_to_fastapi(app, path="/api/copilotkit")
+
+# Your existing FastAPI routes continue to work
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+```
+
+#### Agent Registration Using Existing CopilotKit Patterns
+```python
+# agents/demo_agent.py - follows existing CopilotKit patterns
+from langchain_core.messages import HumanMessage
+from copilotkit import CopilotKitRemoteEndpoint
+from copilotkit.langchain import copilotkit_runtime_action
+
+# Use existing CopilotKit decorator patterns
+@copilotkit_runtime_action(
+    name="research_topic",
+    description="Research a topic and provide insights"
+)
+async def research_topic(topic: str) -> str:
+    """Research implementation using existing patterns"""
+    return f"Research results for: {topic}"
+
+# Register with endpoint (existing CopilotKit pattern)
+def create_research_agent():
+    endpoint = CopilotKitRemoteEndpoint()
+    # Add your LangGraph or other agents
+    return endpoint
 ```
 
 ### Message Type Definitions
@@ -611,16 +688,19 @@ class RuntimeSettings(BaseSettings):
 ### Development Phase Gates
 Each phase must pass the following criteria before proceeding:
 - All automated tests pass (unit, integration, e2e)
-- Code coverage meets minimum threshold (85% for core, 70% for providers)
+- Code coverage meets minimum threshold (85% for core, 70% for connectors)
+- Runtime can be instantiated and mounted to FastAPI
 - Performance benchmarks meet requirements
 - Security scan passes without high-severity issues
 - Peer review approval from CopilotKit maintainers
 
 ### Production Readiness Checklist
 - [ ] Complete GraphQL schema parity with TypeScript implementation
+- [ ] CopilotRuntime class functional as pluggable FastAPI component
+- [ ] Standalone FastAPI server example working for testing
 - [ ] All message types and meta-events properly implemented
 - [ ] Streaming functionality working with abort support
-- [ ] At least one provider (LangGraph) fully functional
+- [ ] CopilotKitRemoteEndpoint integration fully functional
 - [ ] State persistence working across process restarts
 - [ ] Comprehensive error handling and logging
 - [ ] Security review passed
