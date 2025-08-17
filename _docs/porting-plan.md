@@ -67,7 +67,7 @@ python/copilotkit/runtime_py/
 
 ---
 
-## Phase 0 — Bootstrap and Core Runtime Class
+## Phase 0 — Bootstrap and Core Runtime Class - ✅ COMPLETED
 **Goal**: Establish foundations, create pluggable runtime class, and ensure contract compatibility.
 
 **Technical Requirements:**
@@ -442,6 +442,19 @@ python/copilotkit/runtime_py/
 
 ---
 
+## Development directives
+
+- at the start of each phase create a file `_docs/porting-phase-X-execution.md`, the goal of this file is to be a detailed instructions and scratchpad for the phase, also to be used as memory of the ongoing development process in case of interruptions. In detail, it will contain:
+  - the goals of the phase
+  - the detailed implementation plan (no low level code)
+  - the in progress updates of the implementation
+- if this file is already existing maybe the sessions is a continuation of the previous development, so check the progress and go on
+- at the end of each phase, update the `_docs/porting-implementation.md` in order to have a comphrensive documentation of the actual situation, use it a reference at the start of each new phase
+- when starting a potential long running process use `timeout XX ...` in order to not be stuck
+- be pragmatic and simple 'simplicity is the ultimate perfection'
+
+---
+
 ## Technical Specifications
 
 ### Runtime Integration Architecture
@@ -452,11 +465,11 @@ class CopilotRuntime:
         self.settings = settings
         self.connectors: List[CopilotKitConnector] = []
         self.state_store = self._create_state_store()
-    
+
     def add_connector(self, connector: CopilotKitConnector):
         """Add CopilotKitRemoteEndpoint or other connectors."""
         self.connectors.append(connector)
-    
+
     def mount_to_fastapi(self, app: FastAPI, path: str = "/api/copilotkit"):
         """Mount runtime GraphQL endpoint to existing FastAPI app."""
         pass
@@ -467,10 +480,10 @@ class CopilotKitConnector(ABC):
     async def list_agents(self) -> List[AgentDescriptor]:
         """Return available agents from this connector."""
         pass
-    
+
     @abstractmethod
     async def execute_run(
-        self, 
+        self,
         input_data: GenerateCopilotResponseInput,
         context: RequestContext
     ) -> AsyncIterator[RuntimeEvent]:
@@ -481,7 +494,7 @@ class CopilotKitConnector(ABC):
 class CopilotKitRemoteConnector(CopilotKitConnector):
     def __init__(self, remote_endpoint: CopilotKitRemoteEndpoint):
         self.remote_endpoint = remote_endpoint
-    
+
     async def list_agents(self) -> List[AgentDescriptor]:
         """Discover agents from CopilotKitRemoteEndpoint."""
         pass
@@ -626,28 +639,28 @@ class RuntimeSettings(BaseSettings):
     port: int = 8000
     graphql_path: str = "/api/copilotkit"
     enable_playground: bool = True
-    
+
     # Provider configuration
     enabled_providers: List[str] = ["langgraph"]
     langgraph_config: Optional[Dict] = None
     crewai_config: Optional[Dict] = None
-    
+
     # Storage configuration
     state_store_backend: str = "memory"  # memory, redis, postgres
     redis_url: Optional[str] = None
     postgres_url: Optional[str] = None
-    
+
     # Security and guardrails
     enable_guardrails: bool = True
     allowed_topics: Optional[List[str]] = None
     denied_topics: Optional[List[str]] = None
     max_message_length: int = 10000
-    
+
     # Telemetry
     enable_telemetry: bool = True
     log_level: str = "INFO"
     structured_logging: bool = True
-    
+
     class Config:
         env_prefix = "COPILOTKIT_"
 ```
@@ -692,6 +705,7 @@ Each phase must pass the following criteria before proceeding:
 - Runtime can be instantiated and mounted to FastAPI
 - Performance benchmarks meet requirements
 - Security scan passes without high-severity issues
+- Implementation reference document (`_docs/porting-implementation.md`) updated with completed functionality, test coverage, known limitations, and progress metrics
 - Peer review approval from CopilotKit maintainers
 
 ### Production Readiness Checklist
@@ -706,6 +720,7 @@ Each phase must pass the following criteria before proceeding:
 - [ ] Security review passed
 - [ ] Performance testing completed
 - [ ] Documentation complete and accurate
+- [ ] Implementation reference document (`_docs/porting-implementation.md`) maintained with current status, metrics, and technical details
 - [ ] CI/CD pipeline operational
 - [ ] Package published and installable
 
@@ -715,3 +730,35 @@ Each phase must pass the following criteria before proceeding:
 - Successful integration stories from external developers
 - Minimal production issues and fast resolution times
 - Clear migration path for existing TypeScript users
+
+## Documentation Strategy
+
+### Implementation Reference Document
+To ensure accurate tracking of development progress and maintain a reliable reference for what has been implemented, a comprehensive implementation reference document is maintained at `_docs/porting-implementation.md`.
+
+**Purpose:**
+- Track actual implementation status vs. planned features
+- Document working functionality with source file references
+- Record test coverage metrics and validation results
+- Identify technical debt and known limitations
+- Provide onboarding reference for new developers
+
+**Content Requirements:**
+- **Implementation Status**: Current phase completion with detailed breakdowns
+- **Functional Components**: Classes, methods, and features actually working
+- **Source Code References**: File paths and function names (no line numbers for maintainability)
+- **Test Coverage**: Metrics for implemented components with gap analysis
+- **Technical Debt**: Known limitations, warnings, and future improvements needed
+- **Validation Results**: Acceptance criteria status and manual testing results
+
+**Maintenance Protocol:**
+- **Phase Completion**: Document must be updated before phase sign-off
+- **Major Changes**: Update when significant functionality is added or modified
+- **Quarterly Review**: Comprehensive review and cleanup every quarter
+- **Version Control**: Document changes tracked alongside code changes
+
+**Quality Standards:**
+- All claims must be verifiable through code inspection or testing
+- References must use stable identifiers (class/function names, not line numbers)
+- Metrics must be current and automatically updatable where possible
+- Technical debt must be prioritized and linked to future phase planning
