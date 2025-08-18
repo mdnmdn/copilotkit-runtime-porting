@@ -217,7 +217,7 @@ class CopilotRuntime:
         self.logger.info(f"Discovered {len(discovered_agents)} total agents")
         return discovered_agents
 
-    async def mount_to_fastapi(
+    def mount_to_fastapi(
         self,
         app: FastAPI,
         path: str = "/api/copilotkit",
@@ -259,6 +259,7 @@ class CopilotRuntime:
         async def runtime_info() -> dict[str, Any]:
             """Get runtime information."""
             try:
+                # Agent discovery happens on-demand in route handler
                 agents = await self.discover_agents()
                 return {
                     "runtime": "copilotkit-python",
@@ -287,9 +288,7 @@ class CopilotRuntime:
         self.logger.info(f"Runtime mounted to FastAPI app at path: {self._mount_path}")
         self.logger.info(f"GraphQL endpoint available at: {self._mount_path}/graphql")
 
-        # Initialize state store if not already done
-        if not self._state_store_initialized:
-            await self._initialize_state_store()
+        # State store will be initialized lazily when first accessed
 
     def _setup_middleware_stack(self, app: FastAPI) -> None:
         """

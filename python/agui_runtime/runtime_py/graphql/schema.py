@@ -26,6 +26,7 @@ from agui_runtime.runtime_py.graphql.errors import (
     create_error_response,
     handle_resolver_exception,
 )
+from agui_runtime.runtime_py.storage import serialize_state
 
 
 # GraphQL Enums (matching TypeScript schema exactly)
@@ -362,6 +363,7 @@ class RuntimeInfo:
     version: str
     providers: list[str]
     agents_count: int
+    runtime: str = "copilotkit-python"
 
 
 # Union type for all message types (defined after all message types)
@@ -434,9 +436,7 @@ class Query:
                 e, "available_agents", context.logger, context.correlation_id
             )
             # Return fallback response for recoverable errors
-            return create_error_response(
-                error, ErrorRecoveryStrategy.get_fallback_response(error, "agents_query")
-            ) or AgentsResponse(agents=[])
+            return AgentsResponse(agents=[])
 
         finally:
             context.end_performance_timer("available_agents")
@@ -476,9 +476,7 @@ class Query:
                 return LoadAgentStateResponse(
                     thread_id=data.thread_id,
                     agent_name=data.agent_name,
-                    state_data=context.runtime._state_store_manager.serialize_state(
-                        stored_state.data
-                    ).decode(),
+                    state_data=serialize_state(stored_state.data),
                     state_found=True,
                     last_updated=stored_state.metadata.updated_at,
                 )
@@ -494,9 +492,7 @@ class Query:
                 e, "load_agent_state", context.logger, context.correlation_id
             )
             # Return error response
-            return create_error_response(
-                error, ErrorRecoveryStrategy.get_fallback_response(error, "load_agent_state_query")
-            ) or LoadAgentStateResponse(
+            return LoadAgentStateResponse(
                 thread_id=data.thread_id,
                 agent_name=data.agent_name,
                 state_found=False,
@@ -505,6 +501,49 @@ class Query:
 
         finally:
             context.end_performance_timer("load_agent_state")
+
+    @strawberry.field
+    async def runtime_info(self, info: Info[GraphQLContext, Any]) -> RuntimeInfo:
+        """
+        Query to get runtime information.
+
+        Returns:
+            RuntimeInfo containing runtime details.
+        """
+        context = info.context
+        context.start_performance_timer("runtime_info")
+
+        try:
+            # Log the operation
+            context.log_operation("runtime_info", "query")
+
+            # Get runtime information
+            providers = context.runtime.list_providers()
+            agents = await context.runtime.discover_agents()
+
+            context.logger.debug(f"Retrieved runtime info: {len(providers)} providers, {len(agents)} agents")
+
+            return RuntimeInfo(
+                version="0.1.0",
+                providers=providers,
+                agents_count=len(agents),
+                runtime="copilotkit-python"
+            )
+
+        except Exception as e:
+            error = handle_resolver_exception(
+                e, "runtime_info", context.logger, context.correlation_id
+            )
+            # Return fallback response for recoverable errors
+            return RuntimeInfo(
+                version="unknown",
+                providers=[],
+                agents_count=0,
+                runtime="copilotkit-python"
+            )
+
+        finally:
+            context.end_performance_timer("runtime_info")
 
 
 # Mutation Resolvers
@@ -630,7 +669,12 @@ class Mutation:
             try:
                 state_data = json.loads(data.state_data)
             except json.JSONDecodeError as e:
-                raise CopilotKitError(f"Invalid JSON in state_data: {e}") from e
+                return SaveAgentStateResponse(
+                    thread_id=data.thread_id,
+                    agent_name=data.agent_name,
+                    success=False,
+                    error_message=f"Invalid JSON in state_data: {e}",
+                )
 
             # Save state through runtime
             stored_state = await context.runtime.save_agent_state(

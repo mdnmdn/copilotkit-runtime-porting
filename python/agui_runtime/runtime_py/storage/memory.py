@@ -341,8 +341,9 @@ class MemoryStateStore(StateStore):
         self.max_states_per_thread = max_states_per_thread
         self.logger = logging.getLogger(f"{__name__}.MemoryStateStore")
 
-        # Start cleanup task
-        self._start_cleanup_task()
+        # Cleanup task will be started lazily when first operation occurs
+        self.backend._cleanup_task = None
+        self._cleanup_started = False
 
         self.logger.info("Memory state store initialized")
 
@@ -355,6 +356,9 @@ class MemoryStateStore(StateStore):
         tags: dict[str, str] | None = None,
     ) -> StoredState:
         """Save agent state data."""
+        # Ensure cleanup task is running
+        await self._ensure_cleanup_task()
+
         # Validate inputs
         if not validate_thread_id(thread_id):
             raise StorageError(f"Invalid thread ID: {thread_id}")
@@ -436,6 +440,9 @@ class MemoryStateStore(StateStore):
         agent_name: AgentName,
     ) -> StoredState | None:
         """Load agent state data."""
+        # Ensure cleanup task is running
+        await self._ensure_cleanup_task()
+
         # Validate inputs
         if not validate_thread_id(thread_id):
             raise StorageError(f"Invalid thread ID: {thread_id}")
@@ -639,21 +646,27 @@ class MemoryStateStore(StateStore):
                     f"(thread limit: {self.max_states_per_thread})"
                 )
 
-    def _start_cleanup_task(self) -> None:
-        """Start the periodic cleanup task."""
+    async def _ensure_cleanup_task(self) -> None:
+        """Ensure the periodic cleanup task is started (lazy initialization)."""
+        if not self._cleanup_started and self.backend._cleanup_task is None:
+            try:
+                async def cleanup_loop():
+                    while not getattr(self.backend, "_shutdown", False):
+                        try:
+                            await asyncio.sleep(self.backend.cleanup_interval_seconds)
+                            # The cleanup happens automatically in the backend
+                            self.logger.debug("Periodic cleanup completed")
+                        except asyncio.CancelledError:
+                            break
+                        except Exception as e:
+                            self.logger.error(f"Error in cleanup task: {e}")
 
-        async def cleanup_loop():
-            while not getattr(self.backend, "_shutdown", False):
-                try:
-                    await asyncio.sleep(self.backend.cleanup_interval_seconds)
-                    # The cleanup happens automatically in the backend
-                    self.logger.debug("Periodic cleanup completed")
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    self.logger.error(f"Error in cleanup task: {e}")
-
-        self.backend._cleanup_task = asyncio.create_task(cleanup_loop())
+                self.backend._cleanup_task = asyncio.create_task(cleanup_loop())
+                self._cleanup_started = True
+                self.logger.debug("Cleanup task started")
+            except RuntimeError:
+                # No event loop running, cleanup will be started later
+                pass
 
     async def get_stats(self) -> dict[str, Any]:
         """Get comprehensive state store statistics."""

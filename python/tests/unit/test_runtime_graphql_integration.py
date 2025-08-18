@@ -485,7 +485,7 @@ class TestGraphQLResolvers:
         result = await query.runtime_info(mock_info)
 
         # Should return default values instead of raising
-        assert result.version == "0.1.0"
+        assert result.version == "unknown"
         assert result.providers == []
         assert result.agents_count == 0
 

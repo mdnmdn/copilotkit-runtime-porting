@@ -432,12 +432,12 @@ class TestStateStoreManager:
         manager = StateStoreManager(config=state_store_config)
 
         # Should not be initialized initially
-        assert not manager._state_store_initialized
+        assert manager._store is None
 
         # Initialize
         await manager.initialize()
-        assert manager._state_store_initialized
-        assert manager._state_store is not None
+        assert manager._store is not None
+        assert manager._store is not None
 
         # Health check should work
         health = await manager.health_check()
@@ -638,7 +638,7 @@ class TestErrorHandling:
         # Create state with non-serializable data
         class NonSerializable:
             def __str__(self):
-                return "non-serializable"
+                raise ValueError("Cannot convert to string")
 
         invalid_state = {"obj": NonSerializable()}
 

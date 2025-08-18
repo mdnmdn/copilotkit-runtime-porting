@@ -133,7 +133,7 @@ class TestBasicIntegration:
                 assert "availableAgents" in data["data"]
 
     def test_runtime_info_query(self):
-        """Test runtimeInfo GraphQL query."""
+        """Test runtime info query."""
         app = FastAPI()
         self.runtime.add_provider(self.mock_provider)
         self.runtime.mount_to_fastapi(app, path="/api/copilotkit")
