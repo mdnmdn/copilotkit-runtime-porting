@@ -43,48 +43,48 @@ Configuration:
 """
 
 import json
-from abc import ABC, abstractmethod
 from typing import Any
 
+# Import all base interfaces and implementations
+from .base import (
+    StorageBackend,
+    StateStore,
+    TransactionalStateStore,
+    StoredState,
+    StateMetadata,
+    StorageError,
+    StateNotFoundError,
+    StateCorruptionError,
+    StorageBackendUnavailableError,
+    StateData,
+    ThreadId,
+    AgentName,
+    StateKey,
+    validate_thread_id,
+    validate_agent_name,
+)
 
-# Basic StorageBackend interface for type annotations
-class StorageBackend(ABC):
-    """Abstract base class for storage backends."""
+from .memory import (
+    MemoryStorageBackend,
+    MemoryStateStore,
+)
 
-    @abstractmethod
-    async def get(self, key: str) -> Any:
-        """Get value by key."""
-        pass
-
-    @abstractmethod
-    async def set(self, key: str, value: Any) -> None:
-        """Set value by key."""
-        pass
-
-    @abstractmethod
-    async def delete(self, key: str) -> None:
-        """Delete value by key."""
-        pass
-
-
-# Import base interfaces (will be implemented in later phases)
-# from agui_runtime.runtime_py.storage.base import (
-#     StorageError,
-#     StateNotFoundError,
-#     StorageManager,
-# )
-# from agui_runtime.runtime_py.storage.memory import MemoryStorage
-# from agui_runtime.runtime_py.storage.redis import RedisStorage
-# from agui_runtime.runtime_py.storage.postgresql import PostgreSQLStorage
+from .manager import (
+    StateStoreManager,
+    StateStoreConfig,
+    StateValidator,
+    StateStoreMetrics,
+    StorageBackendType,
+)
 
 __version__ = "0.1.0"
 
 # Storage backend registry for dynamic loading
 STORAGE_BACKENDS: dict[str, str] = {
-    # Will be populated as backends are implemented
-    # "memory": "agui_runtime.runtime_py.storage.memory:MemoryStorage",
-    # "redis": "agui_runtime.runtime_py.storage.redis:RedisStorage",
-    # "postgresql": "agui_runtime.runtime_py.storage.postgresql:PostgreSQLStorage",
+    "memory": "agui_runtime.runtime_py.storage.memory:MemoryStateStore",
+    # Future backends will be added here
+    # "redis": "agui_runtime.runtime_py.storage.redis:RedisStateStore",
+    # "postgresql": "agui_runtime.runtime_py.storage.postgresql:PostgreSQLStateStore",
 }
 
 
@@ -98,16 +98,16 @@ def get_available_backends() -> dict[str, str]:
     return STORAGE_BACKENDS.copy()
 
 
-def create_storage_backend(backend_name: str, **config: Any) -> StorageBackend:
+def create_storage_backend(backend_name: str, **config: Any) -> StateStore:
     """
-    Create a storage backend instance by name.
+    Create a state store backend instance by name.
 
     Args:
         backend_name: Name of the storage backend to create
         **config: Configuration parameters for the backend
 
     Returns:
-        Initialized storage backend instance
+        Initialized state store instance
 
     Raises:
         ValueError: If backend is not available
@@ -125,10 +125,33 @@ def create_storage_backend(backend_name: str, **config: Any) -> StorageBackend:
 
         module = importlib.import_module(module_path)
         backend_class = getattr(module, class_name)
-        # Type: ignore since we're dynamically importing and can't verify at static analysis time
         return backend_class(**config)  # type: ignore[no-any-return]
     except (ImportError, AttributeError) as e:
         raise ImportError(f"Failed to import storage backend '{backend_name}': {e}") from e
+
+
+def create_state_store_manager(
+    backend_type: str = "memory",
+    **config: Any
+) -> StateStoreManager:
+    """
+    Create a state store manager with specified backend.
+
+    Args:
+        backend_type: Type of storage backend
+        **config: Configuration parameters
+
+    Returns:
+        Initialized StateStoreManager instance
+    """
+    try:
+        backend_enum = StorageBackendType(backend_type)
+    except ValueError:
+        available = [bt.value for bt in StorageBackendType]
+        raise ValueError(f"Invalid backend type '{backend_type}'. Available: {available}")
+
+    store_config = StateStoreConfig(backend_type=backend_enum, **config)
+    return StateStoreManager(config=store_config)
 
 
 # Storage utility functions
@@ -193,22 +216,47 @@ def generate_thread_key(thread_id: str) -> str:
 
 # Public API
 __all__ = [
-    # Base interfaces (will be added as they are implemented)
-    # "StorageBackend",
-    # "StorageError",
-    # "StateNotFoundError",
-    # "StorageManager",
-    # Storage implementations (will be added as they are implemented)
-    # "MemoryStorage",
-    # "RedisStorage",
-    # "PostgreSQLStorage",
+    # Base interfaces and abstract classes
+    "StorageBackend",
+    "StateStore",
+    "TransactionalStateStore",
+    "StoredState",
+    "StateMetadata",
+
+    # Exception classes
+    "StorageError",
+    "StateNotFoundError",
+    "StateCorruptionError",
+    "StorageBackendUnavailableError",
+
+    # Type aliases
+    "StateData",
+    "ThreadId",
+    "AgentName",
+    "StateKey",
+
+    # Concrete implementations
+    "MemoryStorageBackend",
+    "MemoryStateStore",
+
+    # Manager and configuration
+    "StateStoreManager",
+    "StateStoreConfig",
+    "StateValidator",
+    "StateStoreMetrics",
+    "StorageBackendType",
+
     # Utility functions
     "get_available_backends",
     "create_storage_backend",
+    "create_state_store_manager",
     "serialize_state",
     "deserialize_state",
     "generate_state_key",
     "generate_thread_key",
+    "validate_thread_id",
+    "validate_agent_name",
+
     # Backend registry
     "STORAGE_BACKENDS",
 ]

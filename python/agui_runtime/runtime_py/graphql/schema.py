@@ -15,9 +15,18 @@ from typing import TYPE_CHECKING, Any
 
 import strawberry
 from strawberry import printer
+from strawberry.types import Info
 
 if TYPE_CHECKING:
     from strawberry.types import Info
+
+from agui_runtime.runtime_py.graphql.context import GraphQLExecutionContext
+from agui_runtime.runtime_py.graphql.errors import (
+    CopilotKitError,
+    handle_resolver_exception,
+    create_error_response,
+    ErrorRecoveryStrategy,
+)
 
 
 # GraphQL Enums (matching TypeScript schema exactly)
@@ -113,6 +122,49 @@ class GenerateCopilotResponseInput:
     metadata: str | None = None  # JSON string
 
 
+@strawberry.input
+class LoadAgentStateInput:
+    """Input type for loading agent state."""
+
+    thread_id: str
+    agent_name: str
+    state_key: str | None = None
+    include_history: bool = False
+
+
+@strawberry.input
+class SaveAgentStateInput:
+    """Input type for saving agent state."""
+
+    thread_id: str
+    agent_name: str
+    state_data: str  # JSON string
+    state_key: str | None = None
+    merge_with_existing: bool = True
+
+
+@strawberry.input
+class MetadataInput:
+    """Input type for request metadata and context properties."""
+
+    user_id: str | None = None
+    session_id: str | None = None
+    client_version: str | None = None
+    platform: str | None = None
+    custom_properties: str | None = None  # JSON string
+
+
+@strawberry.input
+class StreamingConfigInput:
+    """Input type for streaming response configuration."""
+
+    enabled: bool = True
+    buffer_size: int = 1024
+    flush_interval_ms: int = 100
+    include_intermediate_results: bool = False
+    compression_enabled: bool = False
+
+
 # GraphQL Output Types
 @strawberry.type
 class Agent:
@@ -170,7 +222,20 @@ class AgentStateMessage:
 
 
 # Union type for all message types
-MessageUnion = strawberry.union("MessageUnion", (Message, ActionMessage, AgentStateMessage))
+MessageUnion = strawberry.union("MessageUnion", (
+    Message,
+    ActionMessage,
+    AgentStateMessage,
+    ImageMessage,
+    ActionExecutionMessage,
+    ResultMessage
+))
+
+# Union type for meta-events
+MetaEventUnion = strawberry.union("MetaEventUnion", (
+    LangGraphInterruptEvent,
+    CopilotKitLangGraphInterruptEvent
+))
 
 
 @strawberry.type
@@ -185,6 +250,130 @@ class CopilotResponse:
 
 
 @strawberry.type
+class LoadAgentStateResponse:
+    """Response type for loadAgentState query."""
+
+    thread_id: str
+    agent_name: str
+    state_data: str | None = None  # JSON string
+    state_found: bool = False
+    last_updated: datetime.datetime | None = None
+    error_message: str | None = None
+
+
+@strawberry.type
+class SaveAgentStateResponse:
+    """Response type for saveAgentState mutation."""
+
+    thread_id: str
+    agent_name: str
+    success: bool = False
+    state_key: str | None = None
+    saved_at: datetime.datetime | None = None
+    error_message: str | None = None
+
+
+@strawberry.type
+class AgentExecutionResponse:
+    """Response type for agent execution operations."""
+
+    execution_id: str
+    thread_id: str
+    agent_name: str
+    status: MessageStatus
+    result: str | None = None  # JSON string
+    started_at: datetime.datetime
+    completed_at: datetime.datetime | None = None
+    error_message: str | None = None
+
+
+@strawberry.type
+class MetaEventResponse:
+    """Response type for meta-event notifications."""
+
+    event_id: str
+    event_type: str
+    thread_id: str
+    agent_name: str | None = None
+    event_data: str | None = None  # JSON string
+    timestamp: datetime.datetime
+    handled: bool = False
+
+
+@strawberry.type
+class ImageMessage:
+    """GraphQL type for image messages."""
+
+    id: str
+    role: MessageRole = MessageRole.USER
+    content: str  # Image description or caption
+    image_url: str
+    image_data: str | None = None  # Base64 encoded image data
+    mime_type: str = "image/jpeg"
+    status: MessageStatus = MessageStatus.COMPLETED
+    created_at: datetime.datetime = strawberry.field(default_factory=datetime.datetime.utcnow)
+
+
+@strawberry.type
+class ActionExecutionMessage:
+    """GraphQL type for action execution messages."""
+
+    id: str
+    role: MessageRole = MessageRole.TOOL
+    action_name: str
+    execution_id: str
+    input_parameters: str | None = None  # JSON string
+    execution_status: MessageStatus = MessageStatus.PENDING
+    started_at: datetime.datetime
+    completed_at: datetime.datetime | None = None
+    error_details: str | None = None
+    created_at: datetime.datetime = strawberry.field(default_factory=datetime.datetime.utcnow)
+
+
+@strawberry.type
+class ResultMessage:
+    """GraphQL type for result messages."""
+
+    id: str
+    role: MessageRole = MessageRole.ASSISTANT
+    content: str
+    result_type: str = "text"
+    result_data: str | None = None  # JSON string
+    confidence_score: float | None = None
+    source_references: list[str] = strawberry.field(default_factory=list)
+    status: MessageStatus = MessageStatus.COMPLETED
+    created_at: datetime.datetime = strawberry.field(default_factory=datetime.datetime.utcnow)
+
+
+@strawberry.type
+class LangGraphInterruptEvent:
+    """GraphQL type for LangGraph interruption events."""
+
+    event_id: str
+    interrupt_type: str
+    node_name: str
+    thread_id: str
+    interrupt_data: str | None = None  # JSON string
+    resume_token: str | None = None
+    timestamp: datetime.datetime
+    resolved: bool = False
+
+
+@strawberry.type
+class CopilotKitLangGraphInterruptEvent:
+    """GraphQL type for CopilotKit-specific LangGraph interruption events."""
+
+    event_id: str
+    copilotkit_event_type: str
+    langgraph_event: LangGraphInterruptEvent
+    user_interaction_required: bool = False
+    interaction_type: str | None = None
+    interaction_data: str | None = None  # JSON string
+    timestamp: datetime.datetime
+    handled: bool = False
+
+
+@strawberry.type
 class RuntimeInfo:
     """Runtime information type."""
 
@@ -193,14 +382,8 @@ class RuntimeInfo:
     agents_count: int
 
 
-# GraphQL Context
-@strawberry.type
-class GraphQLContext:
-    """GraphQL execution context."""
-
-    request: Any
-    runtime: Any
-    logger: logging.Logger = strawberry.field(default_factory=lambda: logging.getLogger(__name__))
+# GraphQL execution context type
+GraphQLContext = GraphQLExecutionContext
 
 
 # Query Resolvers
@@ -221,17 +404,15 @@ class Query:
         Returns:
             AgentsResponse containing list of available agents.
         """
-        logger = logging.getLogger(f"{__name__}.available_agents")
+        context = info.context
+        context.start_performance_timer("available_agents")
 
         try:
-            # Get runtime from GraphQL context
-            runtime = info.context.runtime
-
             # Log the operation
-            info.context.log_operation("available_agents", "query")
+            context.log_operation("available_agents", "query")
 
             # Discover agents from registered providers
-            agent_descriptors = await runtime.discover_agents()
+            agent_descriptors = await context.runtime.discover_agents()
 
             # Convert to GraphQL Agent types
             agents = [
@@ -244,43 +425,79 @@ class Query:
                 for agent in agent_descriptors
             ]
 
-            logger.debug(f"Retrieved {len(agents)} available agents")
+            context.logger.debug(f"Retrieved {len(agents)} available agents")
             return AgentsResponse(agents=agents)
 
         except Exception as e:
-            logger.error(f"Error retrieving available agents: {e}")
-            # Return empty response rather than failing the query
-            return AgentsResponse(agents=[])
+            error = handle_resolver_exception(
+                e, "available_agents", context.logger, context.correlation_id
+            )
+            # Return fallback response for recoverable errors
+            return create_error_response(
+                error, ErrorRecoveryStrategy.get_fallback_response(error, "agents_query")
+            ) or AgentsResponse(agents=[])
+
+        finally:
+            context.end_performance_timer("available_agents")
 
     @strawberry.field
-    async def runtime_info(self, info: Info[GraphQLContext, Any]) -> RuntimeInfo:
+    async def load_agent_state(
+        self, info: Info[GraphQLContext, Any], data: LoadAgentStateInput
+    ) -> LoadAgentStateResponse:
         """
-        Get runtime information and statistics.
+        Load agent state from storage.
+
+        Args:
+            info: GraphQL execution info
+            data: Load agent state input data
 
         Returns:
-            RuntimeInfo with current runtime state.
+            LoadAgentStateResponse with state data or error
         """
-        logger = logging.getLogger(f"{__name__}.runtime_info")
+        context = info.context
+        context.start_performance_timer("load_agent_state")
 
         try:
-            # Get runtime from GraphQL context
-            runtime = info.context.runtime
-
             # Log the operation
-            info.context.log_operation("runtime_info", "query")
+            context.log_operation("load_agent_state", "query", {
+                "thread_id": data.thread_id,
+                "agent_name": data.agent_name,
+            })
 
-            # Get live runtime information
-            providers = runtime.list_providers()
-            agents = await runtime.discover_agents()
+            # Load state from runtime
+            stored_state = await context.runtime.load_agent_state(data.thread_id, data.agent_name)
 
-            logger.debug(f"Runtime info: {len(providers)} providers, {len(agents)} agents")
-
-            return RuntimeInfo(version="0.1.0", providers=providers, agents_count=len(agents))
+            if stored_state:
+                return LoadAgentStateResponse(
+                    thread_id=data.thread_id,
+                    agent_name=data.agent_name,
+                    state_data=context.runtime._state_store_manager.serialize_state(stored_state.data).decode(),
+                    state_found=True,
+                    last_updated=stored_state.metadata.updated_at,
+                )
+            else:
+                return LoadAgentStateResponse(
+                    thread_id=data.thread_id,
+                    agent_name=data.agent_name,
+                    state_found=False,
+                )
 
         except Exception as e:
-            logger.error(f"Error retrieving runtime info: {e}")
-            # Return default values rather than failing the query
-            return RuntimeInfo(version="0.1.0", providers=[], agents_count=0)
+            error = handle_resolver_exception(
+                e, "load_agent_state", context.logger, context.correlation_id
+            )
+            # Return error response
+            return create_error_response(
+                error, ErrorRecoveryStrategy.get_fallback_response(error, "load_agent_state_query")
+            ) or LoadAgentStateResponse(
+                thread_id=data.thread_id,
+                agent_name=data.agent_name,
+                state_found=False,
+                error_message=error.message if error.user_facing else "Failed to load state"
+            )
+
+        finally:
+            context.end_performance_timer("load_agent_state")
 
 
 # Mutation Resolvers
@@ -308,47 +525,136 @@ class Mutation:
         Returns:
             CopilotResponse with generated messages and status
         """
-        logger = logging.getLogger(f"{__name__}.generate_copilot_response")
+        context = info.context
+        context.start_performance_timer("generate_copilot_response")
 
         try:
-            # Get runtime from GraphQL context
-
             # Log the operation
-            info.context.log_operation("generate_copilot_response", "mutation")
+            context.log_operation("generate_copilot_response", "mutation", {
+                "thread_id": data.agent_session.thread_id,
+                "agent_name": data.agent_session.agent_name,
+                "message_count": len(data.messages),
+                "request_type": data.request_type.value,
+            })
 
-            logger.info(
+            context.logger.info(
                 f"Generating response for thread: {data.agent_session.thread_id}, "
                 f"agent: {data.agent_session.agent_name}, "
                 f"messages: {len(data.messages)}"
             )
 
-            # TODO: In Phase 2, this will implement full agent execution
-            # For now, return a basic acknowledgment response
-
-            # Create a simple acknowledgment message
-            response_message = Message(
-                id=f"msg_{datetime.datetime.utcnow().timestamp()}",
-                role=MessageRole.ASSISTANT,
-                content="Message received. Full agent execution will be implemented in Phase 2.",
-                status=MessageStatus.COMPLETED,
-                created_at=datetime.datetime.utcnow(),
-            )
-
-            return CopilotResponse(
+            # Create runtime context
+            runtime_context = await context.runtime.create_request_context(
                 thread_id=data.agent_session.thread_id,
-                messages=[response_message],
-                status=ResponseStatus.SUCCESS,
-                error_message=None,
+                user_id=data.agent_session.user_id,
+                request_type=data.request_type,
+                properties={"actions": data.actions, "context": data.context},
             )
+
+            try:
+                # TODO: In Phase 2, this will implement full agent execution
+                # For now, return a basic acknowledgment response
+
+                # Create a simple acknowledgment message
+                response_message = Message(
+                    id=f"msg_{datetime.datetime.utcnow().timestamp()}",
+                    role=MessageRole.ASSISTANT,
+                    content="Message received. Full agent execution will be implemented in Phase 2.",
+                    status=MessageStatus.COMPLETED,
+                    created_at=datetime.datetime.utcnow(),
+                )
+
+                return CopilotResponse(
+                    thread_id=data.agent_session.thread_id,
+                    messages=[response_message],
+                    status=ResponseStatus.SUCCESS,
+                )
+
+            finally:
+                # Clean up runtime context
+                await context.runtime.complete_request_context(data.agent_session.thread_id)
 
         except Exception as e:
-            logger.error(f"Error generating copilot response: {e}")
-            return CopilotResponse(
+            error = handle_resolver_exception(
+                e, "generate_copilot_response", context.logger, context.correlation_id
+            )
+            # Return error response
+            return create_error_response(
+                error, ErrorRecoveryStrategy.get_fallback_response(error, "generate_response_mutation")
+            ) or CopilotResponse(
                 thread_id=data.agent_session.thread_id,
                 messages=[],
                 status=ResponseStatus.ERROR,
-                error_message=str(e),
+                error_message=error.message if error.user_facing else "An error occurred"
             )
+
+        finally:
+            context.end_performance_timer("generate_copilot_response")
+
+    @strawberry.field
+    async def save_agent_state(
+        self, info: Info[GraphQLContext, Any], data: SaveAgentStateInput
+    ) -> SaveAgentStateResponse:
+        """
+        Save agent state to storage.
+
+        Args:
+            info: GraphQL execution info
+            data: Save agent state input data
+
+        Returns:
+            SaveAgentStateResponse with success status
+        """
+        context = info.context
+        context.start_performance_timer("save_agent_state")
+
+        try:
+            # Log the operation
+            context.log_operation("save_agent_state", "mutation", {
+                "thread_id": data.thread_id,
+                "agent_name": data.agent_name,
+                "merge_with_existing": data.merge_with_existing,
+            })
+
+            # Parse state data from JSON
+            import json
+            try:
+                state_data = json.loads(data.state_data)
+            except json.JSONDecodeError as e:
+                raise CopilotKitError(f"Invalid JSON in state_data: {e}")
+
+            # Save state through runtime
+            stored_state = await context.runtime.save_agent_state(
+                data.thread_id,
+                data.agent_name,
+                state_data,
+                data.merge_with_existing
+            )
+
+            return SaveAgentStateResponse(
+                thread_id=data.thread_id,
+                agent_name=data.agent_name,
+                success=True,
+                state_key=stored_state.state_key,
+                saved_at=stored_state.metadata.updated_at,
+            )
+
+        except Exception as e:
+            error = handle_resolver_exception(
+                e, "save_agent_state", context.logger, context.correlation_id
+            )
+            # Return error response
+            return create_error_response(
+                error, ErrorRecoveryStrategy.get_fallback_response(error, "save_agent_state_mutation")
+            ) or SaveAgentStateResponse(
+                thread_id=data.thread_id,
+                agent_name=data.agent_name,
+                success=False,
+                error_message=error.message if error.user_facing else "Failed to save state"
+            )
+
+        finally:
+            context.end_performance_timer("save_agent_state")
 
 
 # Create the GraphQL Schema

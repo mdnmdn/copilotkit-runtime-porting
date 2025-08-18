@@ -40,6 +40,12 @@ from agui_runtime.runtime_py.graphql.schema import (
     CopilotRequestType,
     CopilotResponse,
     GenerateCopilotResponseInput,
+    LoadAgentStateInput,
+    SaveAgentStateInput,
+    LoadAgentStateResponse,
+    SaveAgentStateResponse,
+    MetadataInput,
+    StreamingConfigInput,
     # Context types
     GraphQLContext,
     Message,
@@ -59,6 +65,25 @@ from agui_runtime.runtime_py.graphql.schema import (
     # Main schema
     schema,
     validate_schema_compatibility,
+)
+
+from agui_runtime.runtime_py.graphql.context import (
+    GraphQLExecutionContext,
+    create_graphql_context,
+)
+
+from agui_runtime.runtime_py.graphql.errors import (
+    CopilotErrorCode,
+    CopilotKitError,
+    AuthenticationError,
+    AuthorizationError,
+    ProviderError,
+    AgentError,
+    StateStoreError,
+    map_exception_to_error,
+    create_graphql_error,
+    handle_resolver_exception,
+    ErrorRecoveryStrategy,
 )
 
 __version__ = "0.1.0"
@@ -82,6 +107,10 @@ __all__ = [
     "ContextPropertyInput",
     "ActionInput",
     "GenerateCopilotResponseInput",
+    "LoadAgentStateInput",
+    "SaveAgentStateInput",
+    "MetadataInput",
+    "StreamingConfigInput",
     # Output types
     "Agent",
     "AgentsResponse",
@@ -90,9 +119,25 @@ __all__ = [
     "AgentStateMessage",
     "MessageUnion",
     "CopilotResponse",
+    "LoadAgentStateResponse",
+    "SaveAgentStateResponse",
     "RuntimeInfo",
     # Context types
     "GraphQLContext",
+    "GraphQLExecutionContext",
+    "create_graphql_context",
+    # Error handling
+    "CopilotErrorCode",
+    "CopilotKitError",
+    "AuthenticationError",
+    "AuthorizationError",
+    "ProviderError",
+    "AgentError",
+    "StateStoreError",
+    "map_exception_to_error",
+    "create_graphql_error",
+    "handle_resolver_exception",
+    "ErrorRecoveryStrategy",
     # Utility functions
     "get_schema_sdl",
     "validate_schema_compatibility",

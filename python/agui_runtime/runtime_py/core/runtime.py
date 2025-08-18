@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+import uuid
 
 from fastapi import FastAPI, HTTPException
 
@@ -17,6 +18,17 @@ from agui_runtime.runtime_py.core.provider import AgentProvider
 from agui_runtime.runtime_py.core.types import (
     AgentDescriptor,
     RuntimeConfig,
+    RuntimeContext,
+    CopilotRequestType,
+)
+from agui_runtime.runtime_py.storage import (
+    StateStoreManager,
+    StateStoreConfig,
+    StorageBackendType,
+    StateData,
+    ThreadId,
+    AgentName,
+    StoredState,
 )
 
 
@@ -51,6 +63,7 @@ class CopilotRuntime:
         self,
         config: RuntimeConfig | None = None,
         providers: list[AgentProvider] | None = None,
+        state_store_manager: StateStoreManager | None = None,
     ) -> None:
         """
         Initialize the CopilotRuntime.
@@ -58,6 +71,7 @@ class CopilotRuntime:
         Args:
             config: Runtime configuration settings. If None, default config is used.
             providers: List of agent providers to register. Can be empty initially.
+            state_store_manager: State store manager. If None, will be created from config.
         """
         self.config = config or RuntimeConfig()
         self.logger = logging.getLogger(f"{__name__}.CopilotRuntime")
@@ -71,8 +85,13 @@ class CopilotRuntime:
         self._mounted_app: FastAPI | None = None
         self._mount_path: str = ""
 
-        # State management (will be initialized in later phases)
-        self._state_store = None
+        # State management
+        self._state_store_manager = state_store_manager
+        self._state_store_initialized = False
+
+        # Request management
+        self._active_requests: dict[str, RuntimeContext] = {}
+        self._request_metrics: dict[str, Any] = {}
 
         # Streaming management
         self._active_streams: dict[str, Any] = {}
@@ -198,7 +217,7 @@ class CopilotRuntime:
         self.logger.info(f"Discovered {len(discovered_agents)} total agents")
         return discovered_agents
 
-    def mount_to_fastapi(
+    async def mount_to_fastapi(
         self,
         app: FastAPI,
         path: str = "/api/copilotkit",
@@ -268,6 +287,10 @@ class CopilotRuntime:
         self.logger.info(f"Runtime mounted to FastAPI app at path: {self._mount_path}")
         self.logger.info(f"GraphQL endpoint available at: {self._mount_path}/graphql")
 
+        # Initialize state store if not already done
+        if not self._state_store_initialized:
+            await self._initialize_state_store()
+
     def _setup_middleware_stack(self, app: FastAPI) -> None:
         """
         Setup comprehensive middleware stack for the FastAPI application.
@@ -325,6 +348,7 @@ class CopilotRuntime:
             "providers": self._providers,
             "config": self.config,
             "logger": self.logger,
+            "state_store": self._state_store_manager,
         }
 
     def create_fastapi_app(self) -> FastAPI:
@@ -364,6 +388,9 @@ class CopilotRuntime:
             except Exception as e:
                 self.logger.error(f"Failed to initialize provider '{provider_name}': {e}")
 
+        # Initialize state store
+        await self._initialize_state_store()
+
         # Pre-cache agents
         try:
             await self.discover_agents()
@@ -385,6 +412,14 @@ class CopilotRuntime:
                 del self._active_streams[stream_id]
             except Exception as e:
                 self.logger.error(f"Error closing stream {stream_id}: {e}")
+
+        # Cleanup state store
+        if self._state_store_manager:
+            try:
+                await self._state_store_manager.shutdown()
+                self.logger.debug("State store manager shut down")
+            except Exception as e:
+                self.logger.error(f"Error shutting down state store: {e}")
 
         # Cleanup providers
         for provider_name, provider in self._providers.items():
@@ -411,6 +446,245 @@ class CopilotRuntime:
         return (
             f"CopilotRuntime("
             f"providers={len(self._providers)}, "
-            f"mounted={'yes' if self._mounted_app else 'no'}"
+            f"mounted={'yes' if self._mounted_app else 'no'}, "
+            f"state_store={'yes' if self._state_store_manager else 'no'}"
             f")"
         )
+
+    # State Management Methods
+
+    async def save_agent_state(
+        self,
+        thread_id: ThreadId,
+        agent_name: AgentName,
+        state_data: StateData,
+        merge_with_existing: bool = True,
+    ) -> StoredState:
+        """
+        Save agent state data.
+
+        Args:
+            thread_id: Thread identifier
+            agent_name: Agent name
+            state_data: State data to save
+            merge_with_existing: Whether to merge with existing state
+
+        Returns:
+            Stored state with metadata
+        """
+        await self._ensure_state_store()
+
+        return await self._state_store_manager.save_agent_state(
+            thread_id, agent_name, state_data, merge_with_existing
+        )
+
+    async def load_agent_state(
+        self,
+        thread_id: ThreadId,
+        agent_name: AgentName,
+    ) -> StoredState | None:
+        """
+        Load agent state data.
+
+        Args:
+            thread_id: Thread identifier
+            agent_name: Agent name
+
+        Returns:
+            Stored state or None if not found
+        """
+        await self._ensure_state_store()
+
+        return await self._state_store_manager.load_agent_state(thread_id, agent_name)
+
+    async def delete_agent_state(
+        self,
+        thread_id: ThreadId,
+        agent_name: AgentName,
+    ) -> bool:
+        """
+        Delete agent state data.
+
+        Args:
+            thread_id: Thread identifier
+            agent_name: Agent name
+
+        Returns:
+            True if state was deleted, False if not found
+        """
+        await self._ensure_state_store()
+
+        return await self._state_store_manager.delete_agent_state(thread_id, agent_name)
+
+    async def clear_thread_state(self, thread_id: ThreadId) -> int:
+        """
+        Clear all agent state for a thread.
+
+        Args:
+            thread_id: Thread identifier
+
+        Returns:
+            Number of state entries deleted
+        """
+        await self._ensure_state_store()
+
+        return await self._state_store_manager.clear_thread_state(thread_id)
+
+    # Request Lifecycle Management
+
+    async def create_request_context(
+        self,
+        thread_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        request_type: CopilotRequestType = CopilotRequestType.CHAT,
+        properties: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> RuntimeContext:
+        """
+        Create a new runtime request context.
+
+        Args:
+            thread_id: Thread ID (generated if None)
+            user_id: User ID if available
+            session_id: Session ID
+            request_type: Type of request
+            properties: Additional context properties
+            headers: HTTP headers
+
+        Returns:
+            Initialized runtime context
+        """
+        if thread_id is None:
+            thread_id = str(uuid.uuid4())
+
+        context = RuntimeContext(
+            thread_id=thread_id,
+            user_id=user_id,
+            session_id=session_id,
+            request_type=request_type,
+            properties=properties or {},
+            headers=headers or {},
+        )
+
+        # Track active request
+        self._active_requests[context.thread_id] = context
+
+        self.logger.debug(f"Created request context for thread: {context.thread_id}")
+        return context
+
+    async def get_request_context(self, thread_id: str) -> RuntimeContext | None:
+        """
+        Get active request context by thread ID.
+
+        Args:
+            thread_id: Thread identifier
+
+        Returns:
+            Runtime context or None if not found
+        """
+        return self._active_requests.get(thread_id)
+
+    async def complete_request_context(self, thread_id: str) -> None:
+        """
+        Mark a request context as completed and clean it up.
+
+        Args:
+            thread_id: Thread identifier
+        """
+        if thread_id in self._active_requests:
+            del self._active_requests[thread_id]
+            self.logger.debug(f"Completed request context for thread: {thread_id}")
+
+    async def get_runtime_metrics(self) -> dict[str, Any]:
+        """
+        Get comprehensive runtime metrics.
+
+        Returns:
+            Dictionary containing runtime metrics
+        """
+        metrics = {
+            "providers": {
+                "count": len(self._providers),
+                "names": list(self._providers.keys()),
+            },
+            "agents": {
+                "count": len(self._agents_cache),
+                "cache_dirty": self._cache_dirty,
+            },
+            "requests": {
+                "active_count": len(self._active_requests),
+                "metrics": self._request_metrics,
+            },
+            "streams": {
+                "active_count": len(self._active_streams),
+            },
+            "state_store": None,
+        }
+
+        # Add state store metrics if available
+        if self._state_store_manager:
+            try:
+                metrics["state_store"] = self._state_store_manager.get_metrics()
+            except Exception as e:
+                self.logger.warning(f"Failed to get state store metrics: {e}")
+                metrics["state_store"] = {"error": str(e)}
+
+        return metrics
+
+    # Private Methods
+
+    async def _initialize_state_store(self) -> None:
+        """Initialize the state store manager."""
+        if self._state_store_initialized:
+            return
+
+        try:
+            if not self._state_store_manager:
+                # Create state store config from runtime config
+                backend_type_map = {
+                    "memory": StorageBackendType.MEMORY,
+                    "redis": StorageBackendType.REDIS,
+                    "postgresql": StorageBackendType.POSTGRESQL,
+                }
+
+                backend_type = backend_type_map.get(
+                    self.config.state_store_backend,
+                    StorageBackendType.MEMORY
+                )
+
+                state_config = StateStoreConfig(
+                    backend_type=backend_type,
+                    connection_string=self.config.redis_url or self.config.database_url,
+                    max_size_mb=100,  # Default 100MB
+                    default_ttl_seconds=3600,  # 1 hour default
+                )
+
+                self._state_store_manager = StateStoreManager(config=state_config)
+
+            # Initialize the state store
+            await self._state_store_manager.initialize()
+            self._state_store_initialized = True
+
+            self.logger.info("State store manager initialized successfully")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize state store: {e}")
+            # Don't fail runtime initialization for state store issues
+            # Fall back to memory store
+            try:
+                fallback_config = StateStoreConfig(backend_type=StorageBackendType.MEMORY)
+                self._state_store_manager = StateStoreManager(config=fallback_config)
+                await self._state_store_manager.initialize()
+                self._state_store_initialized = True
+                self.logger.warning("Fell back to memory state store")
+            except Exception as fallback_error:
+                self.logger.error(f"Failed to initialize fallback state store: {fallback_error}")
+
+    async def _ensure_state_store(self) -> None:
+        """Ensure state store is initialized."""
+        if not self._state_store_initialized:
+            await self._initialize_state_store()
+
+        if not self._state_store_manager:
+            raise RuntimeError("State store manager is not available")
