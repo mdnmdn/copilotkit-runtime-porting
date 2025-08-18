@@ -100,7 +100,6 @@ async def mock_runtime():
 
     # Mock state store manager
     mock_state_store = AsyncMock(spec=StateStoreManager)
-    mock_state_store.serialize_state.return_value = json.dumps(test_stored_state.data).encode()
     runtime._state_store_manager = mock_state_store
 
     return runtime

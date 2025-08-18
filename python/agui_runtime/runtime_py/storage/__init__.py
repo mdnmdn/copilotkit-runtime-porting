@@ -47,34 +47,32 @@ from typing import Any
 
 # Import all base interfaces and implementations
 from .base import (
-    StorageBackend,
-    StateStore,
-    TransactionalStateStore,
-    StoredState,
-    StateMetadata,
-    StorageError,
-    StateNotFoundError,
-    StateCorruptionError,
-    StorageBackendUnavailableError,
-    StateData,
-    ThreadId,
     AgentName,
+    StateCorruptionError,
+    StateData,
     StateKey,
-    validate_thread_id,
+    StateMetadata,
+    StateNotFoundError,
+    StateStore,
+    StorageBackend,
+    StorageBackendUnavailableError,
+    StorageError,
+    StoredState,
+    ThreadId,
+    TransactionalStateStore,
     validate_agent_name,
+    validate_thread_id,
 )
-
-from .memory import (
-    MemoryStorageBackend,
-    MemoryStateStore,
-)
-
 from .manager import (
-    StateStoreManager,
     StateStoreConfig,
-    StateValidator,
+    StateStoreManager,
     StateStoreMetrics,
+    StateValidator,
     StorageBackendType,
+)
+from .memory import (
+    MemoryStateStore,
+    MemoryStorageBackend,
 )
 
 __version__ = "0.1.0"
@@ -130,10 +128,7 @@ def create_storage_backend(backend_name: str, **config: Any) -> StateStore:
         raise ImportError(f"Failed to import storage backend '{backend_name}': {e}") from e
 
 
-def create_state_store_manager(
-    backend_type: str = "memory",
-    **config: Any
-) -> StateStoreManager:
+def create_state_store_manager(backend_type: str = "memory", **config: Any) -> StateStoreManager:
     """
     Create a state store manager with specified backend.
 
@@ -146,9 +141,9 @@ def create_state_store_manager(
     """
     try:
         backend_enum = StorageBackendType(backend_type)
-    except ValueError:
+    except ValueError as e:
         available = [bt.value for bt in StorageBackendType]
-        raise ValueError(f"Invalid backend type '{backend_type}'. Available: {available}")
+        raise ValueError(f"Invalid backend type '{backend_type}'. Available: {available}") from e
 
     store_config = StateStoreConfig(backend_type=backend_enum, **config)
     return StateStoreManager(config=store_config)
@@ -222,30 +217,25 @@ __all__ = [
     "TransactionalStateStore",
     "StoredState",
     "StateMetadata",
-
     # Exception classes
     "StorageError",
     "StateNotFoundError",
     "StateCorruptionError",
     "StorageBackendUnavailableError",
-
     # Type aliases
     "StateData",
     "ThreadId",
     "AgentName",
     "StateKey",
-
     # Concrete implementations
     "MemoryStorageBackend",
     "MemoryStateStore",
-
     # Manager and configuration
     "StateStoreManager",
     "StateStoreConfig",
     "StateValidator",
     "StateStoreMetrics",
     "StorageBackendType",
-
     # Utility functions
     "get_available_backends",
     "create_storage_backend",
@@ -256,7 +246,6 @@ __all__ = [
     "generate_thread_key",
     "validate_thread_id",
     "validate_agent_name",
-
     # Backend registry
     "STORAGE_BACKENDS",
 ]

@@ -41,6 +41,8 @@ Provider Interface:
 """
 
 # Import base provider interface from core
+from typing import Any
+
 from agui_runtime.runtime_py.core.provider import (
     AgentExecutionError,
     AgentNotFoundError,

@@ -11,10 +11,10 @@ from __future__ import annotations
 import abc
 import datetime
 import json
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any
 
 # Type aliases for better readability
-StateData = Dict[str, Any]
+StateData = dict[str, Any]
 ThreadId = str
 AgentName = str
 StateKey = str
@@ -27,7 +27,7 @@ class StorageError(Exception):
         self,
         message: str,
         error_code: str = "STORAGE_ERROR",
-        details: Dict[str, Any] | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
@@ -41,7 +41,7 @@ class StorageError(Exception):
 class StateNotFoundError(StorageError):
     """Raised when requested state is not found."""
 
-    def __init__(self, state_key: str, details: Dict[str, Any] | None = None) -> None:
+    def __init__(self, state_key: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             f"State not found for key: {state_key}",
             error_code="STATE_NOT_FOUND",
@@ -52,7 +52,7 @@ class StateNotFoundError(StorageError):
 class StateCorruptionError(StorageError):
     """Raised when state data is corrupted or invalid."""
 
-    def __init__(self, state_key: str, reason: str, details: Dict[str, Any] | None = None) -> None:
+    def __init__(self, state_key: str, reason: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             f"State corruption detected for key {state_key}: {reason}",
             error_code="STATE_CORRUPTION",
@@ -63,7 +63,7 @@ class StateCorruptionError(StorageError):
 class StorageBackendUnavailableError(StorageError):
     """Raised when storage backend is unavailable."""
 
-    def __init__(self, backend_name: str, details: Dict[str, Any] | None = None) -> None:
+    def __init__(self, backend_name: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             f"Storage backend '{backend_name}' is unavailable",
             error_code="STORAGE_BACKEND_UNAVAILABLE",
@@ -81,7 +81,7 @@ class StateMetadata:
         version: int = 1,
         size_bytes: int = 0,
         checksum: str | None = None,
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         self.created_at = created_at
         self.updated_at = updated_at
@@ -90,7 +90,7 @@ class StateMetadata:
         self.checksum = checksum
         self.tags = tags or {}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metadata to dictionary."""
         return {
             "created_at": self.created_at.isoformat(),
@@ -102,7 +102,7 @@ class StateMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StateMetadata:
+    def from_dict(cls, data: dict[str, Any]) -> StateMetadata:
         """Create metadata from dictionary."""
         return cls(
             created_at=datetime.datetime.fromisoformat(data["created_at"]),
@@ -127,7 +127,7 @@ class StoredState:
         self.data = data
         self.metadata = metadata
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert stored state to dictionary."""
         return {
             "state_key": self.state_key,
@@ -136,7 +136,7 @@ class StoredState:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StoredState:
+    def from_dict(cls, data: dict[str, Any]) -> StoredState:
         """Create stored state from dictionary."""
         return cls(
             state_key=data["state_key"],
@@ -217,7 +217,7 @@ class StorageBackend(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def list_keys(self, prefix: str = "") -> List[str]:
+    async def list_keys(self, prefix: str = "") -> list[str]:
         """
         List all keys with optional prefix filter.
 
@@ -277,7 +277,7 @@ class StateStore(abc.ABC):
         agent_name: AgentName,
         state_data: StateData,
         merge_with_existing: bool = True,
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> StoredState:
         """
         Save agent state data.
@@ -341,7 +341,7 @@ class StateStore(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def list_thread_agents(self, thread_id: ThreadId) -> List[AgentName]:
+    async def list_thread_agents(self, thread_id: ThreadId) -> list[AgentName]:
         """
         List all agents with state in a thread.
 
@@ -357,7 +357,7 @@ class StateStore(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def list_agent_threads(self, agent_name: AgentName) -> List[ThreadId]:
+    async def list_agent_threads(self, agent_name: AgentName) -> list[ThreadId]:
         """
         List all threads where an agent has state.
 
@@ -449,12 +449,10 @@ class StateStore(abc.ABC):
         """
         try:
             json_str = json.dumps(state_data, default=str, ensure_ascii=False)
-            return json_str.encode('utf-8')
+            return json_str.encode("utf-8")
         except (TypeError, ValueError) as e:
             raise StateCorruptionError(
-                "serialization",
-                f"Failed to serialize state data: {e}",
-                {"error": str(e)}
+                "serialization", f"Failed to serialize state data: {e}", {"error": str(e)}
             ) from e
 
     def deserialize_state(self, state_bytes: bytes) -> StateData:
@@ -471,13 +469,11 @@ class StateStore(abc.ABC):
             StateCorruptionError: If deserialization fails
         """
         try:
-            json_str = state_bytes.decode('utf-8')
+            json_str = state_bytes.decode("utf-8")
             return json.loads(json_str)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise StateCorruptionError(
-                "deserialization",
-                f"Failed to deserialize state data: {e}",
-                {"error": str(e)}
+                "deserialization", f"Failed to deserialize state data: {e}", {"error": str(e)}
             ) from e
 
     async def health_check(self) -> bool:
@@ -562,7 +558,8 @@ def validate_thread_id(thread_id: str) -> bool:
 
     # Basic format validation - alphanumeric, hyphens, underscores
     import re
-    return bool(re.match(r'^[a-zA-Z0-9\-_]+$', thread_id))
+
+    return bool(re.match(r"^[a-zA-Z0-9\-_]+$", thread_id))
 
 
 def validate_agent_name(agent_name: str) -> bool:
@@ -583,7 +580,8 @@ def validate_agent_name(agent_name: str) -> bool:
 
     # Basic format validation - alphanumeric, hyphens, underscores
     import re
-    return bool(re.match(r'^[a-zA-Z0-9\-_]+$', agent_name))
+
+    return bool(re.match(r"^[a-zA-Z0-9\-_]+$", agent_name))
 
 
 # Export public API
@@ -592,23 +590,19 @@ __all__ = [
     "StorageBackend",
     "StateStore",
     "TransactionalStateStore",
-
     # Data classes
     "StoredState",
     "StateMetadata",
-
     # Exceptions
     "StorageError",
     "StateNotFoundError",
     "StateCorruptionError",
     "StorageBackendUnavailableError",
-
     # Type aliases
     "StateData",
     "ThreadId",
     "AgentName",
     "StateKey",
-
     # Utility functions
     "validate_thread_id",
     "validate_agent_name",

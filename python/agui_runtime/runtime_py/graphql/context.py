@@ -101,7 +101,7 @@ class GraphQLExecutionContext:
                 "correlation_id": self.correlation_id,
                 "user_id": self.user_id,
                 "operation_details": details,
-            }
+            },
         )
 
     def start_performance_timer(self, operation_name: str) -> None:
@@ -131,7 +131,7 @@ class GraphQLExecutionContext:
 
         self.logger.debug(
             f"Operation {operation_name} completed in {duration:.3f}s",
-            extra={"correlation_id": self.correlation_id, "duration_seconds": duration}
+            extra={"correlation_id": self.correlation_id, "duration_seconds": duration},
         )
 
         return duration

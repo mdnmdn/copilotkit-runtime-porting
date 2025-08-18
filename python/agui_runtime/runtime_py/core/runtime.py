@@ -9,26 +9,26 @@ runtime system via GraphQL.
 from __future__ import annotations
 
 import logging
-from typing import Any
 import uuid
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
 from agui_runtime.runtime_py.core.provider import AgentProvider
 from agui_runtime.runtime_py.core.types import (
     AgentDescriptor,
+    CopilotRequestType,
     RuntimeConfig,
     RuntimeContext,
-    CopilotRequestType,
 )
 from agui_runtime.runtime_py.storage import (
-    StateStoreManager,
-    StateStoreConfig,
-    StorageBackendType,
-    StateData,
-    ThreadId,
     AgentName,
+    StateData,
+    StateStoreConfig,
+    StateStoreManager,
+    StorageBackendType,
     StoredState,
+    ThreadId,
 )
 
 
@@ -649,8 +649,7 @@ class CopilotRuntime:
                 }
 
                 backend_type = backend_type_map.get(
-                    self.config.state_store_backend,
-                    StorageBackendType.MEMORY
+                    self.config.state_store_backend, StorageBackendType.MEMORY
                 )
 
                 state_config = StateStoreConfig(

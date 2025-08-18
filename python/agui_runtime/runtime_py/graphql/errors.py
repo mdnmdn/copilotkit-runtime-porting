@@ -8,13 +8,14 @@ mechanisms. All errors are mapped to GraphQL-compliant error responses.
 
 from __future__ import annotations
 
-import logging
 import traceback
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import logging
 
 import strawberry
-from strawberry.types import ExecutionResult
 
 
 @strawberry.enum
@@ -133,10 +134,7 @@ class AuthenticationError(CopilotKitError):
 
     def __init__(self, message: str = "Authentication required", **kwargs: Any) -> None:
         super().__init__(
-            message,
-            error_code=CopilotErrorCode.AUTHENTICATION_REQUIRED,
-            user_facing=True,
-            **kwargs
+            message, error_code=CopilotErrorCode.AUTHENTICATION_REQUIRED, user_facing=True, **kwargs
         )
 
 
@@ -145,10 +143,7 @@ class AuthorizationError(CopilotKitError):
 
     def __init__(self, message: str = "Access denied", **kwargs: Any) -> None:
         super().__init__(
-            message,
-            error_code=CopilotErrorCode.AUTHORIZATION_DENIED,
-            user_facing=True,
-            **kwargs
+            message, error_code=CopilotErrorCode.AUTHORIZATION_DENIED, user_facing=True, **kwargs
         )
 
 
@@ -164,7 +159,7 @@ class ProviderError(CopilotKitError):
             error_code=CopilotErrorCode.PROVIDER_EXECUTION_FAILED,
             details=details,
             recoverable=True,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -180,7 +175,7 @@ class AgentError(CopilotKitError):
             error_code=CopilotErrorCode.AGENT_EXECUTION_FAILED,
             details=details,
             recoverable=True,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -189,10 +184,7 @@ class StateStoreError(CopilotKitError):
 
     def __init__(self, message: str, **kwargs: Any) -> None:
         super().__init__(
-            message,
-            error_code=CopilotErrorCode.STATE_STORE_UNAVAILABLE,
-            recoverable=True,
-            **kwargs
+            message, error_code=CopilotErrorCode.STATE_STORE_UNAVAILABLE, recoverable=True, **kwargs
         )
 
 
@@ -278,7 +270,7 @@ def create_graphql_error(
             "code": error.error_code.value,
             "correlation_id": error.correlation_id,
             "recoverable": error.recoverable,
-        }
+        },
     }
 
     # Add details for internal errors
@@ -405,17 +397,13 @@ class ErrorRecoveryStrategy:
         if operation_type == "agents_query":
             return {"agents": []}
         elif operation_type == "runtime_info_query":
-            return {
-                "version": "unknown",
-                "providers": [],
-                "agents_count": 0
-            }
+            return {"version": "unknown", "providers": [], "agents_count": 0}
         elif operation_type == "generate_response_mutation":
             return {
                 "thread_id": error.details.get("thread_id", "unknown"),
                 "messages": [],
                 "status": "ERROR",
-                "error_message": error.message if error.user_facing else "An error occurred"
+                "error_message": error.message if error.user_facing else "An error occurred",
             }
         elif operation_type == "load_agent_state_query":
             return {
@@ -423,14 +411,14 @@ class ErrorRecoveryStrategy:
                 "agent_name": error.details.get("agent_name", "unknown"),
                 "state_data": None,
                 "state_found": False,
-                "error_message": error.message if error.user_facing else None
+                "error_message": error.message if error.user_facing else None,
             }
         elif operation_type == "save_agent_state_mutation":
             return {
                 "thread_id": error.details.get("thread_id", "unknown"),
                 "agent_name": error.details.get("agent_name", "unknown"),
                 "success": False,
-                "error_message": error.message if error.user_facing else None
+                "error_message": error.message if error.user_facing else None,
             }
 
         return None

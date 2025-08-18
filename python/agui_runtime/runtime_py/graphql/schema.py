@@ -9,7 +9,6 @@ all types, enums, queries, and mutations required for frontend integration.
 from __future__ import annotations
 
 import datetime
-import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -23,9 +22,9 @@ if TYPE_CHECKING:
 from agui_runtime.runtime_py.graphql.context import GraphQLExecutionContext
 from agui_runtime.runtime_py.graphql.errors import (
     CopilotKitError,
-    handle_resolver_exception,
-    create_error_response,
     ErrorRecoveryStrategy,
+    create_error_response,
+    handle_resolver_exception,
 )
 
 
@@ -221,23 +220,6 @@ class AgentStateMessage:
     created_at: datetime.datetime = strawberry.field(default_factory=datetime.datetime.utcnow)
 
 
-# Union type for all message types
-MessageUnion = strawberry.union("MessageUnion", (
-    Message,
-    ActionMessage,
-    AgentStateMessage,
-    ImageMessage,
-    ActionExecutionMessage,
-    ResultMessage
-))
-
-# Union type for meta-events
-MetaEventUnion = strawberry.union("MetaEventUnion", (
-    LangGraphInterruptEvent,
-    CopilotKitLangGraphInterruptEvent
-))
-
-
 @strawberry.type
 class CopilotResponse:
     """Response type for generateCopilotResponse mutation."""
@@ -382,6 +364,25 @@ class RuntimeInfo:
     agents_count: int
 
 
+# Union type for all message types (defined after all message types)
+MessageUnion = strawberry.union(
+    "MessageUnion",
+    (
+        Message,
+        ActionMessage,
+        AgentStateMessage,
+        ImageMessage,
+        ActionExecutionMessage,
+        ResultMessage,
+    ),
+)
+
+# Union type for meta-events (defined after all meta-event types)
+MetaEventUnion = strawberry.union(
+    "MetaEventUnion", (LangGraphInterruptEvent, CopilotKitLangGraphInterruptEvent)
+)
+
+
 # GraphQL execution context type
 GraphQLContext = GraphQLExecutionContext
 
@@ -459,10 +460,14 @@ class Query:
 
         try:
             # Log the operation
-            context.log_operation("load_agent_state", "query", {
-                "thread_id": data.thread_id,
-                "agent_name": data.agent_name,
-            })
+            context.log_operation(
+                "load_agent_state",
+                "query",
+                {
+                    "thread_id": data.thread_id,
+                    "agent_name": data.agent_name,
+                },
+            )
 
             # Load state from runtime
             stored_state = await context.runtime.load_agent_state(data.thread_id, data.agent_name)
@@ -471,7 +476,9 @@ class Query:
                 return LoadAgentStateResponse(
                     thread_id=data.thread_id,
                     agent_name=data.agent_name,
-                    state_data=context.runtime._state_store_manager.serialize_state(stored_state.data).decode(),
+                    state_data=context.runtime._state_store_manager.serialize_state(
+                        stored_state.data
+                    ).decode(),
                     state_found=True,
                     last_updated=stored_state.metadata.updated_at,
                 )
@@ -493,7 +500,7 @@ class Query:
                 thread_id=data.thread_id,
                 agent_name=data.agent_name,
                 state_found=False,
-                error_message=error.message if error.user_facing else "Failed to load state"
+                error_message=error.message if error.user_facing else "Failed to load state",
             )
 
         finally:
@@ -530,25 +537,21 @@ class Mutation:
 
         try:
             # Log the operation
-            context.log_operation("generate_copilot_response", "mutation", {
-                "thread_id": data.agent_session.thread_id,
-                "agent_name": data.agent_session.agent_name,
-                "message_count": len(data.messages),
-                "request_type": data.request_type.value,
-            })
+            context.log_operation(
+                "generate_copilot_response",
+                "mutation",
+                {
+                    "thread_id": data.agent_session.thread_id,
+                    "agent_name": data.agent_session.agent_name,
+                    "message_count": len(data.messages),
+                    "request_type": data.request_type.value,
+                },
+            )
 
             context.logger.info(
                 f"Generating response for thread: {data.agent_session.thread_id}, "
                 f"agent: {data.agent_session.agent_name}, "
                 f"messages: {len(data.messages)}"
-            )
-
-            # Create runtime context
-            runtime_context = await context.runtime.create_request_context(
-                thread_id=data.agent_session.thread_id,
-                user_id=data.agent_session.user_id,
-                request_type=data.request_type,
-                properties={"actions": data.actions, "context": data.context},
             )
 
             try:
@@ -580,12 +583,13 @@ class Mutation:
             )
             # Return error response
             return create_error_response(
-                error, ErrorRecoveryStrategy.get_fallback_response(error, "generate_response_mutation")
+                error,
+                ErrorRecoveryStrategy.get_fallback_response(error, "generate_response_mutation"),
             ) or CopilotResponse(
                 thread_id=data.agent_session.thread_id,
                 messages=[],
                 status=ResponseStatus.ERROR,
-                error_message=error.message if error.user_facing else "An error occurred"
+                error_message=error.message if error.user_facing else "An error occurred",
             )
 
         finally:
@@ -610,25 +614,27 @@ class Mutation:
 
         try:
             # Log the operation
-            context.log_operation("save_agent_state", "mutation", {
-                "thread_id": data.thread_id,
-                "agent_name": data.agent_name,
-                "merge_with_existing": data.merge_with_existing,
-            })
+            context.log_operation(
+                "save_agent_state",
+                "mutation",
+                {
+                    "thread_id": data.thread_id,
+                    "agent_name": data.agent_name,
+                    "merge_with_existing": data.merge_with_existing,
+                },
+            )
 
             # Parse state data from JSON
             import json
+
             try:
                 state_data = json.loads(data.state_data)
             except json.JSONDecodeError as e:
-                raise CopilotKitError(f"Invalid JSON in state_data: {e}")
+                raise CopilotKitError(f"Invalid JSON in state_data: {e}") from e
 
             # Save state through runtime
             stored_state = await context.runtime.save_agent_state(
-                data.thread_id,
-                data.agent_name,
-                state_data,
-                data.merge_with_existing
+                data.thread_id, data.agent_name, state_data, data.merge_with_existing
             )
 
             return SaveAgentStateResponse(
@@ -645,12 +651,13 @@ class Mutation:
             )
             # Return error response
             return create_error_response(
-                error, ErrorRecoveryStrategy.get_fallback_response(error, "save_agent_state_mutation")
+                error,
+                ErrorRecoveryStrategy.get_fallback_response(error, "save_agent_state_mutation"),
             ) or SaveAgentStateResponse(
                 thread_id=data.thread_id,
                 agent_name=data.agent_name,
                 success=False,
-                error_message=error.message if error.user_facing else "Failed to save state"
+                error_message=error.message if error.user_facing else "Failed to save state",
             )
 
         finally:

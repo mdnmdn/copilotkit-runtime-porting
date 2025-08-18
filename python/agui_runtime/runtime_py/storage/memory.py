@@ -9,16 +9,15 @@ Features include automatic cleanup, size limits, and state export/import.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import hashlib
 import logging
-from typing import Any, Dict, List, Optional
-import weakref
+from typing import Any
 
 from .base import (
     AgentName,
     StateData,
-    StateKey,
     StateMetadata,
     StateNotFoundError,
     StateStore,
@@ -58,9 +57,9 @@ class MemoryStorageBackend(StorageBackend):
         self.cleanup_interval_seconds = cleanup_interval_seconds
 
         # Storage containers
-        self._storage: Dict[str, bytes] = {}
-        self._metadata: Dict[str, Dict[str, Any]] = {}
-        self._access_times: Dict[str, datetime.datetime] = {}
+        self._storage: dict[str, bytes] = {}
+        self._metadata: dict[str, dict[str, Any]] = {}
+        self._access_times: dict[str, datetime.datetime] = {}
 
         # Thread safety
         self._lock = asyncio.Lock()
@@ -111,9 +110,7 @@ class MemoryStorageBackend(StorageBackend):
             expires_at = None
             effective_ttl = ttl_seconds or self.default_ttl_seconds
             if effective_ttl:
-                expires_at = datetime.datetime.utcnow() + datetime.timedelta(
-                    seconds=effective_ttl
-                )
+                expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=effective_ttl)
 
             # Check if we need to make space
             value_size = len(value)
@@ -157,7 +154,7 @@ class MemoryStorageBackend(StorageBackend):
 
             return True
 
-    async def list_keys(self, prefix: str = "") -> List[str]:
+    async def list_keys(self, prefix: str = "") -> list[str]:
         """List all keys with optional prefix filter."""
         async with self._lock:
             # Clean up expired keys first
@@ -165,7 +162,7 @@ class MemoryStorageBackend(StorageBackend):
 
             # Filter by prefix
             if prefix:
-                return [key for key in self._storage.keys() if key.startswith(prefix)]
+                return [key for key in self._storage if key.startswith(prefix)]
             else:
                 return list(self._storage.keys())
 
@@ -192,10 +189,8 @@ class MemoryStorageBackend(StorageBackend):
         # Cancel cleanup task
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
 
         # Clear all data
         async with self._lock:
@@ -233,10 +228,7 @@ class MemoryStorageBackend(StorageBackend):
         space_needed = (current_usage + required_bytes) - self.max_size_bytes
 
         # Sort keys by access time (oldest first)
-        keys_by_access = sorted(
-            self._access_times.items(),
-            key=lambda x: x[1]
-        )
+        keys_by_access = sorted(self._access_times.items(), key=lambda x: x[1])
 
         evicted_bytes = 0
         for key, _ in keys_by_access:
@@ -270,7 +262,7 @@ class MemoryStorageBackend(StorageBackend):
         if expired_keys:
             self.logger.debug(f"Cleaned up {len(expired_keys)} expired keys")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get storage statistics."""
         return {
             "total_keys": len(self._storage),
@@ -281,19 +273,17 @@ class MemoryStorageBackend(StorageBackend):
             "eviction_count": self._eviction_count,
         }
 
-    async def export_data(self) -> Dict[str, Any]:
+    async def export_data(self) -> dict[str, Any]:
         """Export all data for backup/testing."""
         async with self._lock:
             return {
                 "storage": {k: v.hex() for k, v in self._storage.items()},
                 "metadata": self._metadata.copy(),
-                "access_times": {
-                    k: v.isoformat() for k, v in self._access_times.items()
-                },
+                "access_times": {k: v.isoformat() for k, v in self._access_times.items()},
                 "stats": self.get_stats(),
             }
 
-    async def import_data(self, data: Dict[str, Any]) -> None:
+    async def import_data(self, data: dict[str, Any]) -> None:
         """Import data from backup/testing."""
         async with self._lock:
             self._storage.clear()
@@ -327,7 +317,7 @@ class MemoryStateStore(StateStore):
         self,
         max_size_mb: int = 100,
         default_ttl_seconds: int | None = 3600,  # 1 hour default
-        cleanup_interval_seconds: int = 300,     # 5 minutes
+        cleanup_interval_seconds: int = 300,  # 5 minutes
         max_states_per_thread: int = 50,
     ) -> None:
         """
@@ -362,7 +352,7 @@ class MemoryStateStore(StateStore):
         agent_name: AgentName,
         state_data: StateData,
         merge_with_existing: bool = True,
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> StoredState:
         """Save agent state data."""
         # Validate inputs
@@ -507,9 +497,7 @@ class MemoryStateStore(StateStore):
             deleted = await self.backend.delete(state_key)
 
             if deleted:
-                self.logger.info(
-                    f"Deleted state for agent '{agent_name}' in thread '{thread_id}'"
-                )
+                self.logger.info(f"Deleted state for agent '{agent_name}' in thread '{thread_id}'")
 
             return deleted
 
@@ -519,7 +507,7 @@ class MemoryStateStore(StateStore):
             )
             raise StorageError(f"Failed to delete agent state: {e}") from e
 
-    async def list_thread_agents(self, thread_id: ThreadId) -> List[AgentName]:
+    async def list_thread_agents(self, thread_id: ThreadId) -> list[AgentName]:
         """List all agents with state in a thread."""
         if not validate_thread_id(thread_id):
             raise StorageError(f"Invalid thread ID: {thread_id}")
@@ -535,7 +523,7 @@ class MemoryStateStore(StateStore):
             agents = []
             for key in keys:
                 if key.startswith(thread_prefix):
-                    agent_name = key[len(thread_prefix):]
+                    agent_name = key[len(thread_prefix) :]
                     if validate_agent_name(agent_name):
                         agents.append(agent_name)
 
@@ -545,7 +533,7 @@ class MemoryStateStore(StateStore):
             self.logger.error(f"Failed to list agents for thread '{thread_id}': {e}")
             raise StorageError(f"Failed to list thread agents: {e}") from e
 
-    async def list_agent_threads(self, agent_name: AgentName) -> List[ThreadId]:
+    async def list_agent_threads(self, agent_name: AgentName) -> list[ThreadId]:
         """List all threads where an agent has state."""
         if not validate_agent_name(agent_name):
             raise StorageError(f"Invalid agent name: {agent_name}")
@@ -589,9 +577,7 @@ class MemoryStateStore(StateStore):
                 if await self.delete_agent_state(thread_id, agent_name):
                     deleted_count += 1
 
-            self.logger.info(
-                f"Cleared {deleted_count} agent states from thread '{thread_id}'"
-            )
+            self.logger.info(f"Cleared {deleted_count} agent states from thread '{thread_id}'")
 
             return deleted_count
 
@@ -655,8 +641,9 @@ class MemoryStateStore(StateStore):
 
     def _start_cleanup_task(self) -> None:
         """Start the periodic cleanup task."""
+
         async def cleanup_loop():
-            while not getattr(self.backend, '_shutdown', False):
+            while not getattr(self.backend, "_shutdown", False):
                 try:
                     await asyncio.sleep(self.backend.cleanup_interval_seconds)
                     # The cleanup happens automatically in the backend
@@ -668,7 +655,7 @@ class MemoryStateStore(StateStore):
 
         self.backend._cleanup_task = asyncio.create_task(cleanup_loop())
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """Get comprehensive state store statistics."""
         backend_stats = self.backend.get_stats()
 
@@ -693,10 +680,10 @@ class MemoryStateStore(StateStore):
             "max_states_per_thread": self.max_states_per_thread,
         }
 
-    async def export_states(self) -> Dict[str, Any]:
+    async def export_states(self) -> dict[str, Any]:
         """Export all states for backup/testing."""
         return await self.backend.export_data()
 
-    async def import_states(self, data: Dict[str, Any]) -> None:
+    async def import_states(self, data: dict[str, Any]) -> None:
         """Import states from backup/testing."""
         await self.backend.import_data(data)

@@ -278,7 +278,11 @@ def validate_args(args: argparse.Namespace) -> None:
         args.workers = 1
 
     # Validate storage configuration
-    if args.state_store == "redis" and not args.redis_url and not os.getenv("AGUI_RUNTIME_REDIS_URL"):
+    if (
+        args.state_store == "redis"
+        and not args.redis_url
+        and not os.getenv("AGUI_RUNTIME_REDIS_URL")
+    ):
         print("Error: Redis URL required when using Redis state store")
         sys.exit(1)
 

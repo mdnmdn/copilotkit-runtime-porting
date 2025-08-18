@@ -9,23 +9,20 @@ interface for all state management operations across the runtime.
 from __future__ import annotations
 
 import asyncio
-import logging
-from typing import Any, Dict, List, Optional, Type, Union
-from enum import Enum
-import json
+import contextlib
 import datetime
+import logging
+from enum import Enum
+from typing import Any
 
 from .base import (
     AgentName,
     StateData,
     StateMetadata,
-    StateNotFoundError,
     StateStore,
-    StorageBackend,
     StorageError,
     StoredState,
     ThreadId,
-    TransactionalStateStore,
     validate_agent_name,
     validate_thread_id,
 )
@@ -34,6 +31,7 @@ from .memory import MemoryStateStore
 
 class StorageBackendType(Enum):
     """Supported storage backend types."""
+
     MEMORY = "memory"
     REDIS = "redis"
     POSTGRESQL = "postgresql"
@@ -91,7 +89,7 @@ class StateStoreConfig:
         self.metrics_enabled = metrics_enabled
         self.extra_config = kwargs
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
             "backend_type": self.backend_type.value,
@@ -110,7 +108,7 @@ class StateStoreConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StateStoreConfig:
+    def from_dict(cls, data: dict[str, Any]) -> StateStoreConfig:
         """Create configuration from dictionary."""
         backend_type = StorageBackendType(data.get("backend_type", "memory"))
         return cls(
@@ -126,12 +124,25 @@ class StateStoreConfig:
             backup_enabled=data.get("backup_enabled", False),
             backup_interval_seconds=data.get("backup_interval_seconds", 3600),
             metrics_enabled=data.get("metrics_enabled", True),
-            **{k: v for k, v in data.items() if k not in [
-                "backend_type", "connection_string", "max_size_mb", "default_ttl_seconds",
-                "connection_pool_size", "timeout_seconds", "retry_attempts",
-                "enable_compression", "enable_encryption", "backup_enabled",
-                "backup_interval_seconds", "metrics_enabled"
-            ]}
+            **{
+                k: v
+                for k, v in data.items()
+                if k
+                not in [
+                    "backend_type",
+                    "connection_string",
+                    "max_size_mb",
+                    "default_ttl_seconds",
+                    "connection_pool_size",
+                    "timeout_seconds",
+                    "retry_attempts",
+                    "enable_compression",
+                    "enable_encryption",
+                    "backup_enabled",
+                    "backup_interval_seconds",
+                    "metrics_enabled",
+                ]
+            },
         )
 
 
@@ -139,9 +150,9 @@ class StateStoreMetrics:
     """Metrics collection for state store operations."""
 
     def __init__(self) -> None:
-        self.operations_count: Dict[str, int] = {}
-        self.operation_durations: Dict[str, List[float]] = {}
-        self.error_count: Dict[str, int] = {}
+        self.operations_count: dict[str, int] = {}
+        self.operation_durations: dict[str, list[float]] = {}
+        self.error_count: dict[str, int] = {}
         self.cache_hits = 0
         self.cache_misses = 0
         self.total_states_stored = 0
@@ -168,7 +179,7 @@ class StateStoreMetrics:
         """Record a cache miss."""
         self.cache_misses += 1
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get comprehensive metrics statistics."""
         avg_durations = {}
         for op, durations in self.operation_durations.items():
@@ -198,14 +209,14 @@ class StateValidator:
     """State data validation and schema checking."""
 
     def __init__(self) -> None:
-        self.schemas: Dict[str, Dict[str, Any]] = {}
-        self.required_fields: Dict[str, List[str]] = {}
+        self.schemas: dict[str, dict[str, Any]] = {}
+        self.required_fields: dict[str, list[str]] = {}
 
     def register_schema(
         self,
         agent_name: str,
-        schema: Dict[str, Any],
-        required_fields: List[str] | None = None,
+        schema: dict[str, Any],
+        required_fields: list[str] | None = None,
     ) -> None:
         """Register a validation schema for an agent."""
         self.schemas[agent_name] = schema
@@ -235,9 +246,7 @@ class StateValidator:
         # Check required fields
         missing_fields = [field for field in required if field not in state_data]
         if missing_fields:
-            raise StorageError(
-                f"Missing required fields for agent {agent_name}: {missing_fields}"
-            )
+            raise StorageError(f"Missing required fields for agent {agent_name}: {missing_fields}")
 
         # Basic type checking
         for field, expected_type in schema.items():
@@ -258,7 +267,7 @@ class StateValidator:
         elif expected_type == "integer":
             return isinstance(value, int)
         elif expected_type == "float":
-            return isinstance(value, (int, float))
+            return isinstance(value, int | float)
         elif expected_type == "boolean":
             return isinstance(value, bool)
         elif expected_type == "array":
@@ -301,8 +310,8 @@ class StateStoreManager:
         self._metrics = StateStoreMetrics() if self.config.metrics_enabled else None
 
         # Caching (simple in-memory cache for metadata)
-        self._metadata_cache: Dict[str, StateMetadata] = {}
-        self._cache_expiry: Dict[str, datetime.datetime] = {}
+        self._metadata_cache: dict[str, StateMetadata] = {}
+        self._cache_expiry: dict[str, datetime.datetime] = {}
         self._cache_ttl_seconds = 300  # 5 minutes
 
         # Health and monitoring
@@ -318,7 +327,9 @@ class StateStoreManager:
         # Logging
         self.logger = logging.getLogger(f"{__name__}.StateStoreManager")
 
-        self.logger.info(f"State store manager initialized with {self.config.backend_type.value} backend")
+        self.logger.info(
+            f"State store manager initialized with {self.config.backend_type.value} backend"
+        )
 
     async def initialize(self) -> None:
         """Initialize the state store manager and backend."""
@@ -349,10 +360,8 @@ class StateStoreManager:
             for task in [self._health_check_task, self._backup_task]:
                 if task and not task.done():
                     task.cancel()
-                    try:
+                    with contextlib.suppress(asyncio.CancelledError):
                         await task
-                    except asyncio.CancelledError:
-                        pass
 
             # Cleanup store
             if self._store:
@@ -373,7 +382,7 @@ class StateStoreManager:
         agent_name: AgentName,
         state_data: StateData,
         merge_with_existing: bool = True,
-        tags: Dict[str, str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> StoredState:
         """Save agent state with validation and metrics."""
         start_time = datetime.datetime.utcnow()
@@ -556,12 +565,12 @@ class StateStoreManager:
         await self._ensure_store()
         return await self._store.get_state_metadata(thread_id, agent_name)
 
-    async def list_thread_agents(self, thread_id: ThreadId) -> List[AgentName]:
+    async def list_thread_agents(self, thread_id: ThreadId) -> list[AgentName]:
         """List all agents with state in a thread."""
         await self._ensure_store()
         return await self._store.list_thread_agents(thread_id)
 
-    async def list_agent_threads(self, agent_name: AgentName) -> List[ThreadId]:
+    async def list_agent_threads(self, agent_name: AgentName) -> list[ThreadId]:
         """List all threads where an agent has state."""
         await self._ensure_store()
         return await self._store.list_agent_threads(agent_name)
@@ -571,7 +580,7 @@ class StateStoreManager:
         await self._ensure_store()
 
         # Clear cache entries for this thread
-        keys_to_remove = [key for key in self._metadata_cache.keys() if key.startswith(f"{thread_id}:")]
+        keys_to_remove = [key for key in self._metadata_cache if key.startswith(f"{thread_id}:")]
         for key in keys_to_remove:
             self._metadata_cache.pop(key, None)
             self._cache_expiry.pop(key, None)
@@ -580,9 +589,9 @@ class StateStoreManager:
 
     async def bulk_save_states(
         self,
-        states: List[tuple[ThreadId, AgentName, StateData]],
+        states: list[tuple[ThreadId, AgentName, StateData]],
         merge_with_existing: bool = True,
-    ) -> List[StoredState]:
+    ) -> list[StoredState]:
         """Bulk save multiple states for efficiency."""
         results = []
         for thread_id, agent_name, state_data in states:
@@ -594,8 +603,8 @@ class StateStoreManager:
 
     async def bulk_load_states(
         self,
-        requests: List[tuple[ThreadId, AgentName]],
-    ) -> List[StoredState | None]:
+        requests: list[tuple[ThreadId, AgentName]],
+    ) -> list[StoredState | None]:
         """Bulk load multiple states for efficiency."""
         results = []
         for thread_id, agent_name in requests:
@@ -613,7 +622,7 @@ class StateStoreManager:
             self.logger.error(f"Health check failed: {e}")
             return False
 
-    def get_metrics(self) -> Dict[str, Any] | None:
+    def get_metrics(self) -> dict[str, Any] | None:
         """Get comprehensive metrics."""
         if not self._metrics:
             return None
@@ -622,13 +631,17 @@ class StateStoreManager:
 
         # Add cache metrics
         cache_size = len(self._metadata_cache)
-        base_metrics.update({
-            "cache_size": cache_size,
-            "cache_ttl_seconds": self._cache_ttl_seconds,
-            "is_healthy": self._is_healthy,
-            "last_health_check": self._last_health_check.isoformat() if self._last_health_check else None,
-            "config": self.config.to_dict(),
-        })
+        base_metrics.update(
+            {
+                "cache_size": cache_size,
+                "cache_ttl_seconds": self._cache_ttl_seconds,
+                "is_healthy": self._is_healthy,
+                "last_health_check": (
+                    self._last_health_check.isoformat() if self._last_health_check else None
+                ),
+                "config": self.config.to_dict(),
+            }
+        )
 
         return base_metrics
 
@@ -672,6 +685,7 @@ class StateStoreManager:
 
     def _start_health_monitoring(self) -> None:
         """Start periodic health monitoring."""
+
         async def health_monitor():
             while True:
                 try:
@@ -686,6 +700,7 @@ class StateStoreManager:
 
     def _start_backup_task(self) -> None:
         """Start periodic backup task."""
+
         async def backup_task():
             while True:
                 try:
