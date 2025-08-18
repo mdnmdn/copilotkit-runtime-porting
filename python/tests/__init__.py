@@ -29,7 +29,7 @@ Usage:
     pytest tests/e2e/
 
     # Run with coverage
-    pytest --cov=copilotkit.runtime_py
+    pytest --cov=agui_runtime.runtime_py
 
     # Run specific test markers
     pytest -m "unit"
@@ -54,7 +54,7 @@ INTEGRATION_TESTS_DIR = TESTS_DIR / "integration"
 E2E_TESTS_DIR = TESTS_DIR / "e2e"
 
 # Test environment variables
-TEST_ENV_PREFIX = "COPILOTKIT_TEST_"
+TEST_ENV_PREFIX = "AGUI_RUNTIME_TEST_"
 
 
 def get_test_env(key: str, default=None):

@@ -18,7 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from starlette.responses import JSONResponse
 
-from copilotkit.runtime_py.app.middleware import (
+from agui_runtime.runtime_py.app.middleware import (
     RequestLoggingMiddleware,
     ErrorHandlingMiddleware,
     AuthenticationMiddleware,
@@ -28,7 +28,7 @@ from copilotkit.runtime_py.app.middleware import (
     setup_authentication_middleware,
     setup_all_middleware,
 )
-from copilotkit.runtime_py.core.types import RuntimeConfig
+from agui_runtime.runtime_py.core.types import RuntimeConfig
 
 
 class TestRequestLoggingMiddleware:
@@ -437,14 +437,14 @@ class TestMiddlewareSetupFunctions:
         config = RuntimeConfig(cors_origins=["*"])
 
         with (
-            patch("copilotkit.runtime_py.app.middleware.setup_cors_middleware") as mock_cors,
+            patch("agui_runtime.runtime_py.app.middleware.setup_cors_middleware") as mock_cors,
             patch(
-                "copilotkit.runtime_py.app.middleware.setup_error_handling_middleware"
+                "agui_runtime.runtime_py.app.middleware.setup_error_handling_middleware"
             ) as mock_error,
             patch(
-                "copilotkit.runtime_py.app.middleware.setup_authentication_middleware"
+                "agui_runtime.runtime_py.app.middleware.setup_authentication_middleware"
             ) as mock_auth,
-            patch("copilotkit.runtime_py.app.middleware.setup_logging_middleware") as mock_logging,
+            patch("agui_runtime.runtime_py.app.middleware.setup_logging_middleware") as mock_logging,
         ):
 
             setup_all_middleware(app, config)

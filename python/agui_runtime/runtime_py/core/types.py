@@ -240,7 +240,7 @@ class RuntimeConfig(BaseModel):
     class Config:
         """Pydantic configuration."""
 
-        env_prefix = "COPILOTKIT_"
+        env_prefix = "AGUI_RUNTIME_"
         case_sensitive = False
 
 

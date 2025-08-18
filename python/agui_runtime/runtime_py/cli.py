@@ -21,8 +21,8 @@ from typing import Any
 import uvicorn
 from pydantic import ValidationError
 
-from copilotkit.runtime_py.app.main import create_app
-from copilotkit.runtime_py.core.types import RuntimeConfig
+from agui_runtime.runtime_py.app.main import create_app
+from agui_runtime.runtime_py.core.types import RuntimeConfig
 
 
 def setup_logging(log_level: str, log_format: str | None = None) -> None:
@@ -123,12 +123,12 @@ def create_runtime_config(args: argparse.Namespace) -> RuntimeConfig:
     if args.timeout:
         config_data["request_timeout_seconds"] = args.timeout
 
-    # Load environment variables with COPILOTKIT_ prefix
+    # Load environment variables with AGUI_RUNTIME_ prefix
     env_config = {}
     for key, value in os.environ.items():
-        if key.startswith("COPILOTKIT_"):
-            # Convert COPILOTKIT_HOST to host
-            config_key = key[11:].lower()  # Remove COPILOTKIT_ prefix
+        if key.startswith("AGUI_RUNTIME_"):
+            # Convert AGUI_RUNTIME_HOST to host
+            config_key = key[11:].lower()  # Remove AGUI_RUNTIME_ prefix
             env_config[config_key] = value
 
     # Merge: env_config < config_file < command_line_args
@@ -149,28 +149,26 @@ def create_argument_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser instance
     """
     parser = argparse.ArgumentParser(
-        prog="copilotkit-runtime",
-        description="CopilotKit Python Runtime - Production-ready Python implementation",
+        prog="agui-runtime",
+        description="AGUI Runtime Python - Production-ready Python implementation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  copilotkit-runtime                                    # Start with defaults
-  copilotkit-runtime --host 0.0.0.0 --port 8000       # Custom host/port
-  copilotkit-runtime --config config.json              # Load from config file
-  copilotkit-runtime --providers langgraph crewai      # Enable specific providers
-  copilotkit-runtime --dev                             # Development mode
-  copilotkit-runtime --log-level DEBUG                 # Debug logging
+        epilog="""Examples:
+  agui-runtime                                    # Start with defaults
+  agui-runtime --host 0.0.0.0 --port 8000       # Custom host/port
+  agui-runtime --config config.json              # Load from config file
+  agui-runtime --providers langgraph crewai      # Enable specific providers
+  agui-runtime --dev                             # Development mode
+  agui-runtime --log-level DEBUG                 # Debug logging
 
 Environment Variables:
-  COPILOTKIT_HOST                 Server host (default: 0.0.0.0)
-  COPILOTKIT_PORT                 Server port (default: 8000)
-  COPILOTKIT_GRAPHQL_PATH         GraphQL endpoint path
-  COPILOTKIT_ENABLED_PROVIDERS    Comma-separated provider list
-  COPILOTKIT_STATE_STORE_BACKEND  State storage backend
-  COPILOTKIT_REDIS_URL            Redis connection URL
-  COPILOTKIT_DATABASE_URL         Database connection URL
-  LOG_LEVEL                       Logging level
-        """,
+  AGUI_RUNTIME_HOST                 Server host (default: 0.0.0.0)
+  AGUI_RUNTIME_PORT                 Server port (default: 8000)
+  AGUI_RUNTIME_GRAPHQL_PATH         GraphQL endpoint path
+  AGUI_RUNTIME_ENABLED_PROVIDERS    Comma-separated provider list
+  AGUI_RUNTIME_STATE_STORE_BACKEND  State storage backend
+  AGUI_RUNTIME_REDIS_URL            Redis connection URL
+  AGUI_RUNTIME_DATABASE_URL         Database connection URL
+  LOG_LEVEL                       Logging level""",
     )
 
     # Server configuration
@@ -249,7 +247,7 @@ Environment Variables:
     parser.add_argument("--config", type=str, help="Path to JSON configuration file")
 
     # Version
-    parser.add_argument("--version", action="version", version="CopilotKit Python Runtime 0.1.0")
+    parser.add_argument("--version", action="version", version="AGUI Runtime Python 0.1.0")
 
     return parser
 
@@ -280,14 +278,14 @@ def validate_args(args: argparse.Namespace) -> None:
         args.workers = 1
 
     # Validate storage configuration
-    if args.state_store == "redis" and not args.redis_url and not os.getenv("COPILOTKIT_REDIS_URL"):
+    if args.state_store == "redis" and not args.redis_url and not os.getenv("AGUI_RUNTIME_REDIS_URL"):
         print("Error: Redis URL required when using Redis state store")
         sys.exit(1)
 
     if (
         args.state_store == "postgresql"
         and not args.database_url
-        and not os.getenv("COPILOTKIT_DATABASE_URL")
+        and not os.getenv("AGUI_RUNTIME_DATABASE_URL")
     ):
         print("Error: Database URL required when using PostgreSQL state store")
         sys.exit(1)
@@ -338,7 +336,7 @@ def run_server(args: argparse.Namespace) -> None:
     # Start the server
     try:
         uvicorn.run(
-            "copilotkit.runtime_py.app.main:app",
+            "agui_runtime.runtime_py.app.main:app",
             host=host,
             port=port,
             reload=reload,

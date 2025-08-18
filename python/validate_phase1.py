@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Phase 1 Validation Script for CopilotKit Python Runtime.
+Phase 1 Validation Script for AGUI Runtime Python.
 
 This script validates that all Phase 1 functionality is working correctly:
 - CopilotRuntime instantiation and configuration
@@ -21,10 +21,10 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from copilotkit.runtime_py import CopilotRuntime
-from copilotkit.runtime_py.core.types import RuntimeConfig, AgentDescriptor
-from copilotkit.runtime_py.core.provider import AgentProvider
-from copilotkit.runtime_py.graphql.schema import get_schema_sdl
+from agui_runtime.runtime_py import CopilotRuntime
+from agui_runtime.runtime_py.core.types import RuntimeConfig, AgentDescriptor
+from agui_runtime.runtime_py.core.provider import AgentProvider
+from agui_runtime.runtime_py.graphql.schema import get_schema_sdl
 
 
 class ValidationProvider(AgentProvider):

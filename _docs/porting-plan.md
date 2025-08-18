@@ -1,4 +1,4 @@
-## CopilotRuntime Python Port – Comprehensive Porting Plan
+## AGUI Runtime Python Port – Comprehensive Porting Plan
 
 ### Overview
 This plan delivers a Python port of CopilotRuntime that exposes a GraphQL endpoint via FastAPI and bridges to Python agent frameworks starting with LangGraph. The runtime must reproduce the exact GraphQL contract and semantics of the TypeScript implementation to maintain compatibility with existing React clients using `@copilotkit/runtime-client-gql`.

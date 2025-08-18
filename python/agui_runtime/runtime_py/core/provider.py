@@ -12,7 +12,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from copilotkit.runtime_py.core.types import (
+from agui_runtime.runtime_py.core.types import (
     AgentDescriptor,
     AgentState,
     Message,

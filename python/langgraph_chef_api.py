@@ -10,22 +10,15 @@ load_dotenv()
 import uvicorn
 from fastapi import FastAPI
 
-from copilotkit import CopilotKitRemoteEndpoint, LangGraphAgent
-from copilotkit.integrations.fastapi import add_fastapi_endpoint
+from agui_runtime.runtime_py import CopilotRuntime
+from agui_runtime.runtime_py.core.provider import AgentProvider
 from langgraph_chef_agent import graph
 
 app = FastAPI()
-sdk = CopilotKitRemoteEndpoint(
-    agents=[
-        LangGraphAgent(
-            name="Chef",
-            description="Chef agent.",
-            graph=graph,
-        ),
-    ],
-)
+runtime = CopilotRuntime()
 
-add_fastapi_endpoint(app, sdk, "/copilotkit")
+# Mount the runtime to FastAPI
+runtime.mount_to_fastapi(app, path="/api/agui")
 
 
 # add new route for health check

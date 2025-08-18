@@ -1,20 +1,12 @@
 [project]
-name = "copilotkit-runtime-py"
+name = "agui-runtime"
 version = "0.1.0"
-description = "Python port of CopilotKit Runtime - Production-ready Python implementation enabling seamless integration with Python AI frameworks"
+description = "AGUI Runtime - Production-ready Python implementation enabling seamless integration with Python AI frameworks"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "CopilotKit Team" }]
-keywords = [
-    "ai",
-    "copilotkit",
-    "runtime",
-    "graphql",
-    "agents",
-    "langgraph",
-    "crewai",
-]
+keywords = ["ai", "agui", "runtime", "graphql", "agents", "langgraph", "crewai"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -59,23 +51,23 @@ dev = [
     "pre-commit>=3.0.0",
     "httpx>=0.27.0",          # for testing
 ]
-all = ["copilotkit-runtime-py[langgraph,crewai,redis,postgresql]"]
+all = ["agui-runtime[langgraph,crewai,redis,postgresql]"]
 
 [project.scripts]
-copilotkit-runtime = "copilotkit.runtime_py.cli:main"
+agui-runtime = "agui_runtime.runtime_py.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/CopilotKit/copilotkit"
-Repository = "https://github.com/CopilotKit/copilotkit"
-Documentation = "https://docs.copilotkit.ai"
-Issues = "https://github.com/CopilotKit/copilotkit/issues"
+Homepage = "https://github.com/aguiruntime/agui-runtime"
+Repository = "https://github.com/aguiruntime/agui-runtime"
+Documentation = "https://docs.agui-runtime.ai"
+Issues = "https://github.com/aguiruntime/agui-runtime/issues"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["copilotkit"]
+packages = ["agui_runtime"]
 
 [tool.ruff]
 line-length = 100
@@ -141,7 +133,7 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
-    "copilotkit.*",
+    "agui_runtime.*",
     "langgraph.*",
     "langchain_core.*",
     "langchain_openai.*",
@@ -159,7 +151,7 @@ addopts = [
     "-v",
     "--strict-markers",
     "--strict-config",
-    "--cov=copilotkit.runtime_py",
+    "--cov=agui_runtime.runtime_py",
     "--cov-branch",
     "--cov-report=term-missing:skip-covered",
     "--cov-report=html:htmlcov",
@@ -174,7 +166,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["copilotkit"]
+source = ["agui_runtime"]
 omit = ["*/tests/*", "*/test_*", "*/__pycache__/*", "*/.*"]
 
 [tool.coverage.report]
@@ -191,6 +183,6 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ]
 
-[project.entry-points."copilotkit.runtime_py.providers"]
-langgraph = "copilotkit.runtime_py.providers.langgraph:LangGraphProvider"
-crewai = "copilotkit.runtime_py.providers.crewai:CrewAIProvider"
+[project.entry-points."agui_runtime.runtime_py.providers"]
+langgraph = "agui_runtime.runtime_py.providers.langgraph:LangGraphProvider"
+crewai = "agui_runtime.runtime_py.providers.crewai:CrewAIProvider"

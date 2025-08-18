@@ -20,8 +20,8 @@ Key Components:
 
 Example Usage:
     ```python
-    from copilotkit.runtime_py.providers import LangGraphProvider
-    from copilotkit.runtime_py.core import CopilotRuntime
+    from agui_runtime.runtime_py.providers import LangGraphProvider
+    from agui_runtime.runtime_py.core import CopilotRuntime
 
     # Create provider instance
     provider = LangGraphProvider()
@@ -33,7 +33,7 @@ Example Usage:
 
 Provider Interface:
     All providers must implement the AgentProvider abstract class from
-    copilotkit.runtime_py.core.provider, which defines:
+    agui_runtime.runtime_py.core.provider, which defines:
     - list_agents(): Discover available agents
     - execute_run(): Execute agent with streaming events
     - load_state()/save_state(): State persistence (optional)
@@ -41,7 +41,7 @@ Provider Interface:
 """
 
 # Import base provider interface from core
-from copilotkit.runtime_py.core.provider import (
+from agui_runtime.runtime_py.core.provider import (
     AgentExecutionError,
     AgentNotFoundError,
     AgentProvider,
@@ -51,17 +51,17 @@ from copilotkit.runtime_py.core.provider import (
 )
 
 # Provider implementations will be imported here as they are implemented
-# from copilotkit.runtime_py.providers.langgraph import LangGraphProvider
-# from copilotkit.runtime_py.providers.crewai import CrewAIProvider
-# from copilotkit.runtime_py.providers.custom import CustomProvider
+# from agui_runtime.runtime_py.providers.langgraph import LangGraphProvider
+# from agui_runtime.runtime_py.providers.crewai import CrewAIProvider
+# from agui_runtime.runtime_py.providers.custom import CustomProvider
 
 __version__ = "0.1.0"
 
 # Provider registry for dynamic discovery
 AVAILABLE_PROVIDERS: dict[str, str] = {
     # Will be populated as providers are implemented
-    # "langgraph": "copilotkit.runtime_py.providers.langgraph:LangGraphProvider",
-    # "crewai": "copilotkit.runtime_py.providers.crewai:CrewAIProvider",
+    # "langgraph": "agui_runtime.runtime_py.providers.langgraph:LangGraphProvider",
+    # "crewai": "agui_runtime.runtime_py.providers.crewai:CrewAIProvider",
 }
 
 

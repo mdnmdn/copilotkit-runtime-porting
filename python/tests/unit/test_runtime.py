@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI
 
-from copilotkit.runtime_py.core.provider import AgentProvider
-from copilotkit.runtime_py.core.runtime import CopilotRuntime
-from copilotkit.runtime_py.core.types import (
+from agui_runtime.runtime_py.core.provider import AgentProvider
+from agui_runtime.runtime_py.core.runtime import CopilotRuntime
+from agui_runtime.runtime_py.core.types import (
     AgentDescriptor,
     AgentState,
     Message,

@@ -1,6 +1,6 @@
-# CopilotKit Python Runtime
+# AGUI Runtime Python
 
-A production-ready Python implementation of the CopilotKit Runtime system, enabling seamless integration with Python-based AI agent frameworks while maintaining complete compatibility with existing React applications.
+A production-ready Python implementation of the AGUI Runtime system, enabling seamless integration with Python-based AI agent frameworks while maintaining complete compatibility with existing React applications.
 
 ## 🎯 Project Status - Phase 0: Bootstrap Complete ✅
 

@@ -13,8 +13,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
-from copilotkit.runtime_py.core.provider import AgentProvider
-from copilotkit.runtime_py.core.types import (
+from agui_runtime.runtime_py.core.provider import AgentProvider
+from agui_runtime.runtime_py.core.types import (
     AgentDescriptor,
     RuntimeConfig,
 )
@@ -33,7 +33,7 @@ class CopilotRuntime:
 
     Example Usage:
         ```python
-        from copilotkit.runtime_py import CopilotRuntime
+        from agui_runtime.runtime_py import CopilotRuntime
         from fastapi import FastAPI
 
         app = FastAPI()
@@ -276,8 +276,8 @@ class CopilotRuntime:
             app: FastAPI application to setup middleware for.
         """
         # Import here to avoid circular imports
-        from copilotkit.runtime_py.app.middleware import setup_all_middleware
-        from copilotkit.runtime_py.app.runtime_mount import setup_graphql_middleware
+        from agui_runtime.runtime_py.app.middleware import setup_all_middleware
+        from agui_runtime.runtime_py.app.runtime_mount import setup_graphql_middleware
 
         # Setup the comprehensive middleware stack
         setup_all_middleware(app, self.config)
@@ -299,7 +299,7 @@ class CopilotRuntime:
             include_playground: Whether to include GraphQL playground
         """
         # Import here to avoid circular imports
-        from copilotkit.runtime_py.app.runtime_mount import mount_graphql_to_fastapi
+        from agui_runtime.runtime_py.app.runtime_mount import mount_graphql_to_fastapi
 
         mount_graphql_to_fastapi(
             app=app,

@@ -20,14 +20,14 @@ The GraphQL API provides:
 
 Example Usage:
     ```python
-    from copilotkit.runtime_py.graphql import schema
+    from agui_runtime.runtime_py.graphql import schema
     from strawberry.fastapi import GraphQLRouter
 
     graphql_app = GraphQLRouter(schema)
     ```
 """
 
-from copilotkit.runtime_py.graphql.schema import (
+from agui_runtime.runtime_py.graphql.schema import (
     ActionInput,
     ActionInputAvailability,
     ActionMessage,

@@ -14,14 +14,14 @@ Key Components:
 
 Example Usage:
     ```python
-    from copilotkit.runtime_py.app import create_app
+    from agui_runtime.runtime_py.app import create_app
 
     app = create_app()
     # App is ready to be served with uvicorn
     ```
 """
 
-from copilotkit.runtime_py.app.main import (
+from agui_runtime.runtime_py.app.main import (
     app,
     create_app,
     mount_runtime_to_app,

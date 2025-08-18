@@ -20,7 +20,7 @@ Key Components:
 
 Example Usage:
     ```python
-    from copilotkit.runtime_py.storage import StorageManager, MemoryStorage
+    from agui_runtime.runtime_py.storage import StorageManager, MemoryStorage
 
     # Create storage backend
     storage = MemoryStorage()
@@ -68,23 +68,23 @@ class StorageBackend(ABC):
 
 
 # Import base interfaces (will be implemented in later phases)
-# from copilotkit.runtime_py.storage.base import (
+# from agui_runtime.runtime_py.storage.base import (
 #     StorageError,
 #     StateNotFoundError,
 #     StorageManager,
 # )
-# from copilotkit.runtime_py.storage.memory import MemoryStorage
-# from copilotkit.runtime_py.storage.redis import RedisStorage
-# from copilotkit.runtime_py.storage.postgresql import PostgreSQLStorage
+# from agui_runtime.runtime_py.storage.memory import MemoryStorage
+# from agui_runtime.runtime_py.storage.redis import RedisStorage
+# from agui_runtime.runtime_py.storage.postgresql import PostgreSQLStorage
 
 __version__ = "0.1.0"
 
 # Storage backend registry for dynamic loading
 STORAGE_BACKENDS: dict[str, str] = {
     # Will be populated as backends are implemented
-    # "memory": "copilotkit.runtime_py.storage.memory:MemoryStorage",
-    # "redis": "copilotkit.runtime_py.storage.redis:RedisStorage",
-    # "postgresql": "copilotkit.runtime_py.storage.postgresql:PostgreSQLStorage",
+    # "memory": "agui_runtime.runtime_py.storage.memory:MemoryStorage",
+    # "redis": "agui_runtime.runtime_py.storage.redis:RedisStorage",
+    # "postgresql": "agui_runtime.runtime_py.storage.postgresql:PostgreSQLStorage",
 }
 
 

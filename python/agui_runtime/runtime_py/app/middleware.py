@@ -24,7 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from copilotkit.runtime_py.core.types import RuntimeConfig
+    from agui_runtime.runtime_py.core.types import RuntimeConfig
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):

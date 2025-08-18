@@ -14,16 +14,16 @@ from unittest.mock import AsyncMock, Mock, patch
 from fastapi import FastAPI, Request, Response
 from fastapi.testclient import TestClient
 
-from copilotkit.runtime_py.app.runtime_mount import (
+from agui_runtime.runtime_py.app.runtime_mount import (
     GraphQLContext,
     get_graphql_context,
     create_graphql_router,
     mount_graphql_to_fastapi,
     setup_graphql_middleware,
 )
-from copilotkit.runtime_py.core.runtime import CopilotRuntime
-from copilotkit.runtime_py.core.types import RuntimeConfig, AgentDescriptor
-from copilotkit.runtime_py.graphql.schema import schema, Query, Mutation
+from agui_runtime.runtime_py.core.runtime import CopilotRuntime
+from agui_runtime.runtime_py.core.types import RuntimeConfig, AgentDescriptor
+from agui_runtime.runtime_py.graphql.schema import schema, Query, Mutation
 
 
 class TestGraphQLContext:
@@ -183,7 +183,7 @@ class TestGraphQLRouterCreation:
         """Test GraphQL router creation."""
         runtime = Mock(spec=CopilotRuntime)
 
-        with patch("copilotkit.runtime_py.app.runtime_mount.GraphQLRouter") as mock_router_class:
+        with patch("agui_runtime.runtime_py.app.runtime_mount.GraphQLRouter") as mock_router_class:
             mock_router = Mock()
             mock_router_class.return_value = mock_router
 
@@ -206,7 +206,7 @@ class TestGraphQLRouterCreation:
         """Test GraphQL router creation without playground."""
         runtime = Mock(spec=CopilotRuntime)
 
-        with patch("copilotkit.runtime_py.app.runtime_mount.GraphQLRouter") as mock_router_class:
+        with patch("agui_runtime.runtime_py.app.runtime_mount.GraphQLRouter") as mock_router_class:
             mock_router = Mock()
             mock_router_class.return_value = mock_router
 
@@ -229,7 +229,7 @@ class TestGraphQLMounting:
         runtime.list_providers.return_value = ["test-provider"]
 
         with patch(
-            "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+            "agui_runtime.runtime_py.app.runtime_mount.create_graphql_router"
         ) as mock_create_router:
             # Create a mock router with all required FastAPI router attributes
             mock_router = Mock()
@@ -260,9 +260,9 @@ class TestGraphQLMounting:
 
         with (
             patch(
-                "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+                "agui_runtime.runtime_py.app.runtime_mount.create_graphql_router"
             ) as mock_create_router,
-            patch("copilotkit.runtime_py.graphql.schema.get_schema_sdl") as mock_get_sdl,
+            patch("agui_runtime.runtime_py.graphql.schema.get_schema_sdl") as mock_get_sdl,
         ):
 
             # Create a mock router with all required FastAPI router attributes
@@ -301,7 +301,7 @@ class TestGraphQLMounting:
         runtime.list_providers.return_value = ["test-provider"]
 
         with patch(
-            "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+            "agui_runtime.runtime_py.app.runtime_mount.create_graphql_router"
         ) as mock_create_router:
             # Create a mock router with all required FastAPI router attributes
             mock_router = Mock()
@@ -334,9 +334,9 @@ class TestGraphQLMounting:
 
         with (
             patch(
-                "copilotkit.runtime_py.app.runtime_mount.create_graphql_router"
+                "agui_runtime.runtime_py.app.runtime_mount.create_graphql_router"
             ) as mock_create_router,
-            patch("copilotkit.runtime_py.graphql.schema.get_schema_sdl") as mock_get_sdl,
+            patch("agui_runtime.runtime_py.graphql.schema.get_schema_sdl") as mock_get_sdl,
         ):
 
             # Create a mock router with all required FastAPI router attributes
@@ -495,7 +495,7 @@ class TestGraphQLSchema:
 
     def test_schema_creation(self):
         """Test that the GraphQL schema can be created."""
-        from copilotkit.runtime_py.graphql.schema import schema
+        from agui_runtime.runtime_py.graphql.schema import schema
 
         # Schema should be created without errors
         assert schema is not None
@@ -504,7 +504,7 @@ class TestGraphQLSchema:
 
     def test_get_schema_sdl(self):
         """Test getting schema SDL."""
-        from copilotkit.runtime_py.graphql.schema import get_schema_sdl
+        from agui_runtime.runtime_py.graphql.schema import get_schema_sdl
 
         sdl = get_schema_sdl()
         assert isinstance(sdl, str)
@@ -514,7 +514,7 @@ class TestGraphQLSchema:
 
     def test_validate_schema_compatibility(self):
         """Test schema compatibility validation."""
-        from copilotkit.runtime_py.graphql.schema import validate_schema_compatibility
+        from agui_runtime.runtime_py.graphql.schema import validate_schema_compatibility
 
         # Should return True for now (stub implementation)
         result = validate_schema_compatibility()

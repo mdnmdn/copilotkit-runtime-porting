@@ -11,9 +11,9 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 import json
 
-from copilotkit.runtime_py.core.runtime import CopilotRuntime
-from copilotkit.runtime_py.core.types import RuntimeConfig, AgentDescriptor
-from copilotkit.runtime_py.core.provider import AgentProvider
+from agui_runtime.runtime_py.core.runtime import CopilotRuntime
+from agui_runtime.runtime_py.core.types import RuntimeConfig, AgentDescriptor
+from agui_runtime.runtime_py.core.provider import AgentProvider
 
 
 class MockAgentProvider(AgentProvider):

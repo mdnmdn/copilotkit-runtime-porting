@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Development scripts for CopilotKit Python Runtime.
+Development scripts for AGUI Runtime Python.
 
-This module provides development utilities and scripts for the CopilotKit
-Python Runtime project. It includes commands for running the server,
+This module provides development utilities and scripts for the AGUI Runtime
+Python project. It includes commands for running the server,
 testing, linting, and other development tasks.
 
 Usage:
@@ -50,7 +50,7 @@ def dev_server():
             "python",
             "-m",
             "uvicorn",
-            "copilotkit.runtime_py.app.main:app",
+            "agui_runtime.runtime_py.app.main:app",
             "--reload",
             "--host",
             "0.0.0.0",
@@ -62,7 +62,7 @@ def dev_server():
 
 def start_server():
     """Start the production server."""
-    return run_command(["python", "-m", "copilotkit.runtime_py.cli"])
+    return run_command(["python", "-m", "agui_runtime.runtime_py.cli"])
 
 
 def run_tests(category: str | None = None):
@@ -93,7 +93,7 @@ def run_tests_with_coverage():
     return run_command(
         [
             "pytest",
-            "--cov=copilotkit.runtime_py",
+            "--cov=agui_runtime.runtime_py",
             "--cov-report=html",
             "--cov-report=term",
             "--cov-report=xml",
@@ -211,7 +211,7 @@ def show_schema():
         [
             "python",
             "-c",
-            "from copilotkit.runtime_py.graphql.schema import get_schema_sdl; print(get_schema_sdl())",
+            "from agui_runtime.runtime_py.graphql.schema import get_schema_sdl; print(get_schema_sdl())",
         ]
     )
 
@@ -222,7 +222,7 @@ def show_info():
         [
             "python",
             "-c",
-            "from copilotkit.runtime_py.core import CopilotRuntime; runtime = CopilotRuntime(); print(repr(runtime))",
+            "from agui_runtime.runtime_py.core import CopilotRuntime; runtime = CopilotRuntime(); print(repr(runtime))",
         ]
     )
 

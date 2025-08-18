@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING, Any
 from fastapi.responses import HTMLResponse
 from strawberry.fastapi import BaseContext, GraphQLRouter
 
-from copilotkit.runtime_py.graphql.schema import schema
+from agui_runtime.runtime_py.graphql.schema import schema
 
 if TYPE_CHECKING:
     from fastapi import FastAPI, Request, Response
 
-    from copilotkit.runtime_py.core.runtime import CopilotRuntime
+    from agui_runtime.runtime_py.core.runtime import CopilotRuntime
 
 
 class GraphQLContext(BaseContext):
@@ -333,7 +333,7 @@ def mount_graphql_to_fastapi(
             """Health check specific to GraphQL functionality."""
             try:
                 # Test GraphQL schema compilation
-                from copilotkit.runtime_py.graphql.schema import get_schema_sdl
+                from agui_runtime.runtime_py.graphql.schema import get_schema_sdl
 
                 schema_sdl = get_schema_sdl()
 
@@ -361,7 +361,7 @@ def mount_graphql_to_fastapi(
         async def graphql_schema() -> dict[str, str]:
             """Get the GraphQL schema SDL."""
             try:
-                from copilotkit.runtime_py.graphql.schema import get_schema_sdl
+                from agui_runtime.runtime_py.graphql.schema import get_schema_sdl
 
                 return {"schema": get_schema_sdl(), "format": "SDL"}
             except Exception as e:

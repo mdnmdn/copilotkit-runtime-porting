@@ -4,7 +4,7 @@ Standalone FastAPI application for CopilotKit Python Runtime.
 This module provides the main FastAPI application entry point for running
 the CopilotKit Python Runtime as a standalone server. It can be started with:
 
-    uvicorn copilotkit.runtime_py.app.main:app --reload
+    uvicorn agui_runtime.runtime_py.app.main:app --reload
 
 The application includes:
 - CopilotRuntime mounting with GraphQL endpoints
@@ -23,8 +23,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from copilotkit.runtime_py.core.runtime import CopilotRuntime
-from copilotkit.runtime_py.core.types import RuntimeConfig
+from agui_runtime.runtime_py.core.runtime import CopilotRuntime
+from agui_runtime.runtime_py.core.types import RuntimeConfig
 
 
 # Configure logging
@@ -188,18 +188,18 @@ if __name__ == "__main__":
     import uvicorn
 
     # Get configuration from environment
-    host = os.getenv("COPILOTKIT_HOST", "0.0.0.0")
-    port = int(os.getenv("COPILOTKIT_PORT", "8000"))
-    reload = os.getenv("COPILOTKIT_RELOAD", "true").lower() == "true"
-    workers = int(os.getenv("COPILOTKIT_WORKERS", "1"))
+    host = os.getenv("AGUI_RUNTIME_HOST", "0.0.0.0")
+    port = int(os.getenv("AGUI_RUNTIME_PORT", "8000"))
+    reload = os.getenv("AGUI_RUNTIME_RELOAD", "true").lower() == "true"
+    workers = int(os.getenv("AGUI_RUNTIME_WORKERS", "1"))
 
-    print(f"Starting CopilotKit Python Runtime on {host}:{port}")
+    print(f"Starting AGUI Runtime Python on {host}:{port}")
     print(f"Reload: {reload}, Workers: {workers}")
     print("Press CTRL+C to quit")
 
     # Run the server
     uvicorn.run(
-        "copilotkit.runtime_py.app.main:app",
+        "agui_runtime.runtime_py.app.main:app",
         host=host,
         port=port,
         reload=reload,

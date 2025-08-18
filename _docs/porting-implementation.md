@@ -1,4 +1,4 @@
-# CopilotKit Python Runtime - Implementation Reference
+# AGUI Runtime Python - Implementation Reference [L1-2]
 
 **Document Version**: 1.0  
 **Last Updated**: Phase 0 Complete  

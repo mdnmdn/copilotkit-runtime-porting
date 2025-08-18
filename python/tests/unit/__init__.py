@@ -30,7 +30,7 @@ Usage:
     pytest tests/unit/test_runtime.py
 
     # Run with coverage
-    pytest tests/unit/ --cov=copilotkit.runtime_py
+    pytest tests/unit/ --cov=agui_runtime.runtime_py
 
     # Run unit tests with markers
     pytest -m "unit"
@@ -44,7 +44,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 # Test fixtures and utilities
-from copilotkit.runtime_py.core.types import (
+from agui_runtime.runtime_py.core.types import (
     AgentDescriptor,
     CopilotRequestType,
     MessageRole,

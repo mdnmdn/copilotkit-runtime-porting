@@ -1,8 +1,8 @@
 """
-CopilotKit Runtime Python - Core Runtime Implementation.
+AGUI Runtime Python - Core Runtime Implementation.
 
 This module provides the main CopilotRuntime class and supporting infrastructure
-for integrating Python AI frameworks with CopilotKit's GraphQL-based frontend runtime.
+for integrating Python AI frameworks with AGUI's GraphQL-based frontend runtime.
 
 Key Components:
 - CopilotRuntime: Main orchestrator class for FastAPI integration
@@ -12,19 +12,19 @@ Key Components:
 
 Example Usage:
     ```python
-    from copilotkit.runtime_py import CopilotRuntime
+    from agui_runtime.runtime_py import CopilotRuntime
     from fastapi import FastAPI
 
     app = FastAPI()
     runtime = CopilotRuntime()
 
     # Mount runtime to FastAPI app
-    runtime.mount_to_fastapi(app, path="/api/copilotkit")
+    runtime.mount_to_fastapi(app, path="/api/agui")
     ```
 """
 
-from copilotkit.runtime_py.core.runtime import CopilotRuntime
-from copilotkit.runtime_py.core.types import (
+from agui_runtime.runtime_py.core.runtime import CopilotRuntime
+from agui_runtime.runtime_py.core.types import (
     ActionInputAvailability,
     CopilotRequestType,
     MessageRole,
@@ -32,7 +32,7 @@ from copilotkit.runtime_py.core.types import (
 )
 
 __version__ = "0.1.0"
-__author__ = "CopilotKit Team"
+__author__ = "AGUI Runtime Team"
 
 # Public API
 __all__ = [

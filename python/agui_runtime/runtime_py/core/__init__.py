@@ -9,14 +9,14 @@ This module contains the essential components for the CopilotKit Python Runtime:
 
 Example Usage:
     ```python
-    from copilotkit.runtime_py.core import CopilotRuntime, RuntimeConfig
+    from agui_runtime.runtime_py.core import CopilotRuntime, RuntimeConfig
 
     config = RuntimeConfig(host="0.0.0.0", port=8000)
     runtime = CopilotRuntime(config=config)
     ```
 """
 
-from copilotkit.runtime_py.core.provider import (
+from agui_runtime.runtime_py.core.provider import (
     AgentExecutionError,
     AgentNotFoundError,
     AgentProvider,
@@ -26,8 +26,8 @@ from copilotkit.runtime_py.core.provider import (
     create_runtime_event,
     validate_agent_exists,
 )
-from copilotkit.runtime_py.core.runtime import CopilotRuntime
-from copilotkit.runtime_py.core.types import (
+from agui_runtime.runtime_py.core.runtime import CopilotRuntime
+from agui_runtime.runtime_py.core.types import (
     ActionInputAvailability,
     ActionMessage,
     # Agent Types
